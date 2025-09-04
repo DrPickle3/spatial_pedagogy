@@ -5,8 +5,15 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 
-#define ANCHOR_ADD "A3:AA:5B:D5:A9:9A:E2:9C"
-#define TAG_ADDR "7D:00:22:EA:82:60:3B:9B"
+char ANCHOR_ADD[] = "A4:AA:5B:D5:A9:9A:E2:9C";
+char TAG_ADDR[] = "7D:00:22:EA:82:60:3B:9B";
+
+// SAVED ANCHOR CALIBRATIONS
+// A1 = 16446 (+10) Accurate
+// A2 = 16511 (+75) Not that good
+// A3 = 16456 (+20) Not much better
+// A4 = 16406 (-30) Almost perfect
+// REF TAG = 16436
 
 #define SPI_SCK 18
 #define SPI_MISO 19
@@ -20,7 +27,7 @@
 #define I2C_SCL 5
 
 // Comment to push tag code
-// #define PUSHING_ANCHOR_CODE
+#define PUSHING_ANCHOR_CODE
 
 Adafruit_SSD1306 display(128, 64, &Wire, -1);
 
@@ -285,14 +292,14 @@ void display_uwb(struct Link *p)
 
     // sprintf(c, "%X:%.1f m %.1f", temp->anchor_addr, temp->range, temp->dbm);
     // sprintf(c, "%X:%.1f m", temp->anchor_addr, temp->range);
-    sprintf(c, "%.1f m", temp->range);
+    sprintf(c, "%.2f m", temp->range);
     display.setTextSize(1);
-    display.setCursor(0, row++ * 20);        // Start at top-left corner
+    display.setCursor(0, row++ * 20); // Start at top-left corner
 
     char buf[5];                             // 4 digits max + null terminator
     sprintf(buf, "%04X", temp->anchor_addr); // convert to hex, 4 digits
     display.print(buf);
-    
+
     display.print(" : ");
     display.println(c);
 
@@ -330,6 +337,8 @@ void setup()
 
   logoshow();
 
+  DW1000.setAntennaDelay(16436 - 30);
+
   // init the configuration
   SPI.begin(SPI_SCK, SPI_MISO, SPI_MOSI);
   DW1000Ranging.initCommunication(UWB_RST, UWB_SS, UWB_IRQ); // Reset, CS, IRQ pin
@@ -342,9 +351,9 @@ void setup()
   // DW1000Ranging.useRangeFilter(true);
 
 #ifdef PUSHING_ANCHOR_CODE
-  DW1000Ranging.startAsAnchor(ANCHOR_ADD, DW1000.MODE_SHORTDATA_FAST_ACCURACY, false);
+  DW1000Ranging.startAsAnchor(ANCHOR_ADD, DW1000.MODE_LONGDATA_RANGE_LOWPOWER, false);
 #else
-  DW1000Ranging.startAsTag(TAG_ADDR, DW1000.MODE_SHORTDATA_FAST_ACCURACY);
+  DW1000Ranging.startAsTag(TAG_ADDR, DW1000.MODE_LONGDATA_RANGE_LOWPOWER);
   uwb_data = init_link();
 #endif
 }
