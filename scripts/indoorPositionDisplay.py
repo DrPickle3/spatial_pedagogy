@@ -16,9 +16,9 @@ print(f"***Server listening on port {TCP_PORT}***")
 data, addr = sock.accept()
 print(f"***Connection accepted from {addr}***")
 
-distance_a1_a2 = 3.0
+distance_a1_a2 = 2.9464
 meter2pixel = 100
-range_offset = 0.9
+range_offset = 0.0
 
 
 def screen_init(width=1200, height=800, t=turtle):
@@ -152,11 +152,14 @@ def tag_pos(a, b, c):
     # s = cmath.sqrt(p * (p - a) * (p - b) * (p - c))
     # y = 2.0 * s / c
     # x = cmath.sqrt(b * b - y * y)
-    cos_a = (b * b + c*c - a * a) / (2 * b * c)
-    x = b * cos_a
-    y = b * cmath.sqrt(1 - cos_a * cos_a)
+    x=0
+    y=0
+    if (b != 0 and c != 0) :
+        cos_a = (b * b + c*c - a * a) / (2 * b * c)
+        x = b * cos_a
+        y = b * cmath.sqrt(1 - cos_a * cos_a)
 
-    return round(x.real, 1), round(y.real, 1)
+    return round(x.real, 3), round(y.real, 3)
 
 
 def uwb_range_offset(uwb_range):
@@ -166,6 +169,10 @@ def uwb_range_offset(uwb_range):
 
 
 def main():
+
+    screen = turtle.Screen()
+    screen.setup(1200, 800)
+    screen.tracer(True)
 
     t_ui = turtle.Turtle()
     t_a1 = turtle.Turtle()
@@ -186,17 +193,17 @@ def main():
         list = read_data()
 
         for one in list:
-            if one["A"] == "1782":
+            if one["A"] == "AAA2":
                 clean(t_a1)
                 a1_range = uwb_range_offset(float(one["R"]))
-                draw_uwb_anchor(-250, 150, "A1782(0,0)", a1_range, t_a1)
+                draw_uwb_anchor(-250, 150, "AAA2(0,0)", a1_range, t_a1)
                 node_count += 1
 
-            if one["A"] == "1783":
+            if one["A"] == "AAA3":
                 clean(t_a2)
                 a2_range = uwb_range_offset(float(one["R"]))
                 draw_uwb_anchor(-250 + meter2pixel * distance_a1_a2,
-                                150, "A1783(" + str(distance_a1_a2)+")", a2_range, t_a2)
+                                150, "AAA3(" + str(distance_a1_a2)+")", a2_range, t_a2)
                 node_count += 1
 
         if node_count == 2:
