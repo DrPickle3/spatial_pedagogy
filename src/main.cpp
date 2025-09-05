@@ -1,9 +1,14 @@
 #include <SPI.h>
 #include "DW1000Ranging.h"
 
+#include <WiFi.h>
+#include "esp_wpa2.h"
+
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
+
+#include "secrets.h"
 
 char ANCHOR_ADD[] = "A4:AA:5B:D5:A9:9A:E2:9C";
 char TAG_ADDR[] = "7D:00:22:EA:82:60:3B:9B";
@@ -27,15 +32,20 @@ char TAG_ADDR[] = "7D:00:22:EA:82:60:3B:9B";
 #define I2C_SCL 5
 
 // Comment to push tag code
-#define PUSHING_ANCHOR_CODE
+// #define PUSHING_ANCHOR_CODE
 
 Adafruit_SSD1306 display(128, 64, &Wire, -1);
 
 #ifndef PUSHING_ANCHOR_CODE
+
+const char *ssid = "eduroam"; // always "eduroam"
+WiFiClient client;
+String all_json = "";
+
 struct Link
 {
   uint16_t anchor_addr;
-  float range;
+  float range[3];
   float dbm;
   struct Link *next;
 };
@@ -52,7 +62,9 @@ struct Link *init_link()
   struct Link *p = (struct Link *)malloc(sizeof(struct Link));
   p->next = NULL;
   p->anchor_addr = 0;
-  p->range = 0.0;
+  p->range[0] = 0.0;
+  p->range[1] = 0.0;
+  p->range[2] = 0.0;
 
   return p;
 }
@@ -73,7 +85,9 @@ void add_link(struct Link *p, uint16_t addr)
   // Create a anchor
   struct Link *a = (struct Link *)malloc(sizeof(struct Link));
   a->anchor_addr = addr;
-  a->range = 0.0;
+  a->range[0] = 0.0;
+  a->range[1] = 0.0;
+  a->range[2] = 0.0;
   a->dbm = 0.0;
   a->next = NULL;
 
@@ -124,8 +138,10 @@ void fresh_link(struct Link *p, uint16_t addr, float range, float dbm)
   struct Link *temp = find_link(p, addr);
   if (temp != NULL)
   {
+    temp->range[2] = temp->range[1];
+    temp->range[1] = temp->range[0];
 
-    temp->range = range;
+    temp->range[0] = (range + temp->range[1] + temp->range[2]) / 3;
     temp->dbm = dbm;
     return;
   }
@@ -147,7 +163,7 @@ void print_link(struct Link *p)
   {
     // Serial.println("Dev %d:%d m", temp->next->anchor_addr, temp->next->range);
     Serial.println(temp->next->anchor_addr, HEX);
-    Serial.println(temp->next->range);
+    Serial.println(temp->next->range[0]);
     Serial.println(temp->next->dbm);
     temp = temp->next;
   }
@@ -176,6 +192,27 @@ void delete_link(struct Link *p, uint16_t addr)
     temp = temp->next;
   }
   return;
+}
+
+void make_link_json(struct Link *p, String *s)
+{
+  Serial.println("make_link_json");
+  *s = "{\"links\":[";
+  struct Link *temp = p;
+
+  while (temp->next != NULL)
+  {
+    temp = temp->next;
+    char link_json[50];
+    sprintf(link_json, "{\"A\":\"%X\",\"R\":\"%.1f\"}", temp->anchor_addr, temp->range[0]);
+    *s += link_json;
+    if (temp->next != NULL)
+    {
+      *s += ",";
+    }
+  }
+  *s += "]}";
+  Serial.println(*s);
 }
 #endif
 
@@ -286,7 +323,7 @@ void display_uwb(struct Link *p)
 
     // Serial.println("Dev %d:%d m", temp->next->anchor_addr, temp->next->range);
     Serial.println(temp->anchor_addr, HEX);
-    Serial.println(temp->range);
+    Serial.println(temp->range[0]);
 
     char c[30];
 
@@ -304,19 +341,19 @@ void display_uwb(struct Link *p)
     display.println(c);
 
     display.println("");
-
-    // sprintf(c, "%.2f dbm", temp->dbm);
-    // display.setTextSize(2);
-    // display.println(c);
-
-    // if (row >= 1)
-    // {
-    //   break;
-    // }
   }
   delay(100);
   display.display();
   return;
+}
+
+void send_udp(String *msg_json)
+{
+  if (client.connected())
+  {
+    client.print(*msg_json);
+    Serial.println("UDP send");
+  }
 }
 #endif
 
@@ -337,7 +374,31 @@ void setup()
 
   logoshow();
 
-  DW1000.setAntennaDelay(16436 - 30);
+  DW1000.setAntennaDelay(16436 - 0);
+
+#ifndef PUSHING_ANCHOR_CODE
+  WiFi.disconnect(true);
+  WiFi.mode(WIFI_STA);
+
+  esp_wifi_sta_wpa2_ent_set_identity((uint8_t *)EDUROAM_USER, strlen(EDUROAM_USER));
+  esp_wifi_sta_wpa2_ent_set_username((uint8_t *)EDUROAM_USER, strlen(EDUROAM_USER));
+  esp_wifi_sta_wpa2_ent_set_password((uint8_t *)EDUROAM_PASS, strlen(EDUROAM_PASS));
+
+  esp_wifi_sta_wpa2_ent_enable();
+
+  WiFi.begin(ssid);
+
+  Serial.println("Connecting to eduroam...");
+  while (WiFi.status() != WL_CONNECTED)
+  {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println("\nConnected!");
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
+#endif
 
   // init the configuration
   SPI.begin(SPI_SCK, SPI_MISO, SPI_MOSI);
@@ -366,6 +427,8 @@ void loop()
 #ifndef PUSHING_ANCHOR_CODE
   if ((millis() - runtime) > 100)
   {
+    make_link_json(uwb_data, &all_json);
+    send_udp(&all_json);
     display_uwb(uwb_data);
     runtime = millis();
   }
