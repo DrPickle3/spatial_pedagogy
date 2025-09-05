@@ -38,9 +38,12 @@ Adafruit_SSD1306 display(128, 64, &Wire, -1);
 
 #ifndef PUSHING_ANCHOR_CODE
 
-const char *ssid = "eduroam"; // always "eduroam"
+const char *ssid = "CamPhone"; // always "eduroam"
 WiFiClient client;
 String all_json = "";
+
+const char* serverIP = "10.172.206.138";
+const uint16_t serverPort = 5000;
 
 struct Link
 {
@@ -347,12 +350,12 @@ void display_uwb(struct Link *p)
   return;
 }
 
-void send_udp(String *msg_json)
+void send_tcp(String *msg_json)
 {
   if (client.connected())
   {
     client.print(*msg_json);
-    Serial.println("UDP send");
+    Serial.println("TCP send");
   }
 }
 #endif
@@ -380,15 +383,9 @@ void setup()
   WiFi.disconnect(true);
   WiFi.mode(WIFI_STA);
 
-  esp_wifi_sta_wpa2_ent_set_identity((uint8_t *)EDUROAM_USER, strlen(EDUROAM_USER));
-  esp_wifi_sta_wpa2_ent_set_username((uint8_t *)EDUROAM_USER, strlen(EDUROAM_USER));
-  esp_wifi_sta_wpa2_ent_set_password((uint8_t *)EDUROAM_PASS, strlen(EDUROAM_PASS));
+  WiFi.begin(ssid, EDUROAM_PASS);
 
-  esp_wifi_sta_wpa2_ent_enable();
-
-  WiFi.begin(ssid);
-
-  Serial.println("Connecting to eduroam...");
+  Serial.println("Connecting to WiFi...");
   while (WiFi.status() != WL_CONNECTED)
   {
     delay(500);
@@ -398,6 +395,15 @@ void setup()
   Serial.println("\nConnected!");
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
+
+  if (client.connect(serverIP, serverPort))
+  {
+    Serial.println("Connected to server!");
+  }
+  else
+  {
+    Serial.println("Connection failed");
+  }
 #endif
 
   // init the configuration
@@ -428,7 +434,7 @@ void loop()
   if ((millis() - runtime) > 100)
   {
     make_link_json(uwb_data, &all_json);
-    send_udp(&all_json);
+    send_tcp(&all_json);
     display_uwb(uwb_data);
     runtime = millis();
   }
