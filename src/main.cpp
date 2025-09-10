@@ -14,7 +14,7 @@
 char ANCHOR_ADD[] = "A1:AA:5B:D5:A9:9A:E2:9C";
 char TAG_ADDR[] = "7D:00:22:EA:82:60:3B:9B";
 
-// SAVED ANCHOR CALIBRATIONS
+// SAVED ANCHOR CALIBRATIONS (Not good anymore)
 // A1 = 16446 (+10) Accurate
 // A2 = 16511 (+75) Not that good
 // A3 = 16456 (+20) Not much better
@@ -63,13 +63,13 @@ char TAG_ADDR[] = "7D:00:22:EA:82:60:3B:9B";
 #define RANGE_HISTORY 5
 
 // Comment to push tag code
-#define PUSHING_ANCHOR_CODE
+// #define PUSHING_ANCHOR_CODE
 
 Adafruit_SSD1306 display(128, 64, &Wire, -1);
 
 #ifndef PUSHING_ANCHOR_CODE
 
-const char *ssid = "CamPhone"; // always "eduroam"
+const char *ssid = "CamPhone"; // works even on eduroam
 WiFiClient client;
 String all_json = "";
 
@@ -173,9 +173,9 @@ struct Link *find_link(struct Link *p, uint16_t addr)
   return NULL;
 }
 
-void fresh_link(struct Link *p, uint16_t addr, float range, float dbm)
+void fresh_link(struct Link *p, uint16_t addr, float range, float dbm)  
 {
-    if (range < 0.1 || range > 10.0) return;
+    if (range < 0.1 || range > 10.0) return; // Ignore negative values and above 10 meters
 
     struct Link *temp = find_link(p, addr);
     if (temp != NULL)

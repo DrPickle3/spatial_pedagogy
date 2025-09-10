@@ -1,6 +1,5 @@
 import time
 import turtle
-import cmath
 import socket
 import json
 
@@ -19,51 +18,13 @@ print(f"***Server listening on port {TCP_PORT}***")
 data, addr = sock.accept()
 print(f"***Connection accepted from {addr}***")
 
-distance_a1_a2 = 7.6962
-meter2pixel = 100
+distance_a1_a2 = 2.4892
+meter2pixel = 250
 range_offset = 0.0
-
-
-def screen_init(width=1200, height=800, t=turtle):
-    t.setup(width, height)
-    t.tracer(False)
-    t.hideturtle()
-    t.speed(0)
-
 
 def turtle_init(t=turtle):
     t.hideturtle()
     t.speed(0)
-
-
-def draw_line(x0, y0, x1, y1, color="black", t=turtle):
-    t.pencolor(color)
-
-    t.up()
-    t.goto(x0, y0)
-    t.down()
-    t.goto(x1, y1)
-    t.up()
-
-
-def draw_fastU(x, y, length, color="black", t=turtle):
-    draw_line(x, y, x, y + length, color, t)
-
-
-def draw_fastV(x, y, length, color="black", t=turtle):
-    draw_line(x, y, x + length, y, color, t)
-
-
-def draw_cycle(x, y, r, color="black", t=turtle):
-    t.pencolor(color)
-
-    t.up()
-    t.goto(x, y - r)
-    t.setheading(0)
-    t.down()
-    t.circle(r)
-    t.up()
-
 
 def fill_cycle(x, y, r, color="black", t=turtle):
     t.up()
@@ -113,10 +74,10 @@ def draw_ui(t):
     write_txt(-50, 205, "WALL", "yellow",  t, f=('Arial', 24, 'normal'))
 
 
-def draw_uwb_anchor(x, y, txt, range, t):
+def draw_uwb_anchor(x, y, txt, t):
     r = 20
     fill_cycle(x, y, r, "green", t)
-    write_txt(x + r, y, txt + ": " + str(range) + "M",
+    write_txt(x + r, y, txt,
               "black",  t, f=('Arial', 16, 'normal'))
 
 
@@ -151,24 +112,16 @@ def read_data():
 
 
 def tag_pos(a, b, c):
-    # p = (a + b + c) / 2.0
-    # s = cmath.sqrt(p * (p - a) * (p - b) * (p - c))
-    # y = 2.0 * s / c
-    # x = cmath.sqrt(b * b - y * y)
     x=0
     y=0
+
     if (b != 0 and c != 0) :
-        cos_a = (b * b + c*c - a * a) / (2 * b * c)
+        cos_a = (b * b + c * c - a * a) / (2 * b * c)
         x = b * cos_a
-        y = b * cmath.sqrt(1 - cos_a * cos_a)
+        sin_a = (1 - cos_a * cos_a) ** 0.5
+        y = b * sin_a
 
     return round(x.real, 3), round(y.real, 3)
-
-
-def uwb_range_offset(uwb_range):
-
-    temp = uwb_range
-    return temp
 
 
 def main():
@@ -198,15 +151,15 @@ def main():
         for one in list:
             if one["A"] == ANCHOR1:
                 clean(t_a1)
-                a1_range = uwb_range_offset(float(one["R"]))
-                draw_uwb_anchor(-250, 150, "ANCHOR1(0,0)", a1_range, t_a1)
+                a1_range = float(one["R"])
+                draw_uwb_anchor(-350, 150, "ANCHOR1(0,0)", t_a1)
                 node_count += 1
 
             if one["A"] == ANCHOR2:
                 clean(t_a2)
-                a2_range = uwb_range_offset(float(one["R"]))
-                draw_uwb_anchor(-250 + meter2pixel * distance_a1_a2,
-                                150, "ANCHOR2(" + str(distance_a1_a2)+")", a2_range, t_a2)
+                a2_range = float(one["R"])
+                draw_uwb_anchor(-350 + meter2pixel * distance_a1_a2,
+                                150, "ANCHOR2(" + str(distance_a1_a2)+",0)", t_a2)
                 node_count += 1
 
         if node_count == 2:
