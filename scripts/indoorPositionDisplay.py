@@ -7,6 +7,9 @@ import json
 TCP_IP = "0.0.0.0"
 TCP_PORT = 5000
 
+ANCHOR1 = "AAA1"
+ANCHOR2 = "AAA4"
+
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 sock.bind((TCP_IP, TCP_PORT))
 sock.listen(1)
@@ -16,7 +19,7 @@ print(f"***Server listening on port {TCP_PORT}***")
 data, addr = sock.accept()
 print(f"***Connection accepted from {addr}***")
 
-distance_a1_a2 = 2.9464
+distance_a1_a2 = 7.6962
 meter2pixel = 100
 range_offset = 0.0
 
@@ -193,17 +196,17 @@ def main():
         list = read_data()
 
         for one in list:
-            if one["A"] == "AAA2":
+            if one["A"] == ANCHOR1:
                 clean(t_a1)
                 a1_range = uwb_range_offset(float(one["R"]))
-                draw_uwb_anchor(-250, 150, "AAA2(0,0)", a1_range, t_a1)
+                draw_uwb_anchor(-250, 150, "ANCHOR1(0,0)", a1_range, t_a1)
                 node_count += 1
 
-            if one["A"] == "AAA3":
+            if one["A"] == ANCHOR2:
                 clean(t_a2)
                 a2_range = uwb_range_offset(float(one["R"]))
                 draw_uwb_anchor(-250 + meter2pixel * distance_a1_a2,
-                                150, "AAA3(" + str(distance_a1_a2)+")", a2_range, t_a2)
+                                150, "ANCHOR2(" + str(distance_a1_a2)+")", a2_range, t_a2)
                 node_count += 1
 
         if node_count == 2:

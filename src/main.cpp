@@ -8,9 +8,10 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 
+#include <vector>
 #include "secrets.h"
 
-char ANCHOR_ADD[] = "A4:AA:5B:D5:A9:9A:E2:9C";
+char ANCHOR_ADD[] = "A1:AA:5B:D5:A9:9A:E2:9C";
 char TAG_ADDR[] = "7D:00:22:EA:82:60:3B:9B";
 
 // SAVED ANCHOR CALIBRATIONS
@@ -19,6 +20,34 @@ char TAG_ADDR[] = "7D:00:22:EA:82:60:3B:9B";
 // A3 = 16456 (+20) Not much better
 // A4 = 16406 (-30) Almost perfect
 // REF TAG = 16436
+
+/*
+* Distance from Tag to Anchor 1 : 3.449
+* True Distance Tag/Anchor1 : 2.8702
+* 
+* Distance measured from Tag to Anchor 4 : 3.045
+* True Distance Tag/Anchor4 : 2.5908
+* 
+* Distance measured from Anchor 1 to Anchor 4 : 2.370
+* True Distance Anchor1/Anchor4 : 1.7018
+* 
+* 
+* Corrections :
+* Tag: 303 => 123 => 39
+* Anchor1 : 660 => 142 => 85
+* Anchor4 : 453 => 97 => 58
+* 
+* 
+* Distance from Tag to Anchor 1 : 1.905
+* True Distance Tag/Anchor1 : 1.901
+* 
+* Distance measured from Tag to Anchor 4 : 1.8288
+* True Distance Tag/Anchor4 : 1.842
+* 
+* Distance measured from Anchor 1 to Anchor 4 : 2.370
+* True Distance Anchor1/Anchor4 : 1.7018
+* 
+*/
 
 #define SPI_SCK 18
 #define SPI_MISO 19
@@ -31,8 +60,10 @@ char TAG_ADDR[] = "7D:00:22:EA:82:60:3B:9B";
 #define I2C_SDA 4
 #define I2C_SCL 5
 
+#define RANGE_HISTORY 5
+
 // Comment to push tag code
-// #define PUSHING_ANCHOR_CODE
+#define PUSHING_ANCHOR_CODE
 
 Adafruit_SSD1306 display(128, 64, &Wire, -1);
 
@@ -42,13 +73,27 @@ const char *ssid = "CamPhone"; // always "eduroam"
 WiFiClient client;
 String all_json = "";
 
-const char* serverIP = "10.172.206.138";
+const char *serverIP = "10.172.206.138";
 const uint16_t serverPort = 5000;
+
+float median_filter(float *arr, int size)
+{
+    std::vector<float> temp;
+    for (int i = 0; i < size; i++)
+        if (arr[i] > 0.01) // ignore zeros
+            temp.push_back(arr[i]);
+
+    if (temp.empty()) return 0.0;
+
+    std::sort(temp.begin(), temp.end());
+    return temp[temp.size() / 2];
+}
 
 struct Link
 {
   uint16_t anchor_addr;
-  float range[3];
+  float range_history[RANGE_HISTORY];
+  int history_index;
   float dbm;
   struct Link *next;
 };
@@ -59,24 +104,20 @@ struct Link *uwb_data;
 
 struct Link *init_link()
 {
-#ifdef DEBUG
-  Serial.println("init_link");
-#endif
   struct Link *p = (struct Link *)malloc(sizeof(struct Link));
   p->next = NULL;
   p->anchor_addr = 0;
-  p->range[0] = 0.0;
-  p->range[1] = 0.0;
-  p->range[2] = 0.0;
+  for (int i = 0; i < RANGE_HISTORY; i++)
+  {
+    p->range_history[i] = 0.0;
+  }
+  p->history_index = 0;
 
   return p;
 }
 
 void add_link(struct Link *p, uint16_t addr)
 {
-#ifdef DEBUG
-  Serial.println("add_link");
-#endif
   struct Link *temp = p;
   // Find struct Link end
   while (temp->next != NULL)
@@ -88,9 +129,11 @@ void add_link(struct Link *p, uint16_t addr)
   // Create a anchor
   struct Link *a = (struct Link *)malloc(sizeof(struct Link));
   a->anchor_addr = addr;
-  a->range[0] = 0.0;
-  a->range[1] = 0.0;
-  a->range[2] = 0.0;
+  for (int i = 0; i < RANGE_HISTORY; i++)
+  {
+    a->range_history[i] = 0.0;
+  }
+  a->history_index = 0;
   a->dbm = 0.0;
   a->next = NULL;
 
@@ -102,9 +145,6 @@ void add_link(struct Link *p, uint16_t addr)
 
 struct Link *find_link(struct Link *p, uint16_t addr)
 {
-#ifdef DEBUG
-  Serial.println("find_link");
-#endif
   if (addr == 0)
   {
     Serial.println("find_link:Input addr is 0");
@@ -135,40 +175,35 @@ struct Link *find_link(struct Link *p, uint16_t addr)
 
 void fresh_link(struct Link *p, uint16_t addr, float range, float dbm)
 {
-#ifdef DEBUG
-  Serial.println("fresh_link");
-#endif
-  struct Link *temp = find_link(p, addr);
-  if (temp != NULL)
-  {
-    temp->range[2] = temp->range[1];
-    temp->range[1] = temp->range[0];
+    if (range < 0.1 || range > 10.0) return;
 
-    temp->range[0] = (range + temp->range[1] + temp->range[2]) / 3;
-    temp->dbm = dbm;
-    return;
-  }
-  else
-  {
-    Serial.println("fresh_link:Fresh fail");
-    return;
-  }
+    struct Link *temp = find_link(p, addr);
+    if (temp != NULL)
+    {
+        // Insert new value in circular buffer
+        temp->range_history[temp->history_index] = range;
+        temp->history_index = (temp->history_index + 1) % RANGE_HISTORY;
+
+        // Save RX power
+        temp->dbm = dbm;
+    }
+    else
+    {
+        Serial.println("fresh_link:Fresh fail");
+    }
 }
 
 void print_link(struct Link *p)
 {
-#ifdef DEBUG
-  Serial.println("print_link");
-#endif
   struct Link *temp = p;
 
   while (temp->next != NULL)
   {
-    // Serial.println("Dev %d:%d m", temp->next->anchor_addr, temp->next->range);
-    Serial.println(temp->next->anchor_addr, HEX);
-    Serial.println(temp->next->range[0]);
-    Serial.println(temp->next->dbm);
     temp = temp->next;
+    // Serial.println("Dev %d:%d m", temp->next->anchor_addr, temp->next->range);
+    Serial.println(temp->anchor_addr, HEX);
+    Serial.println(median_filter(temp->range_history, RANGE_HISTORY));
+    Serial.println(temp->dbm);
   }
 
   return;
@@ -176,9 +211,6 @@ void print_link(struct Link *p)
 
 void delete_link(struct Link *p, uint16_t addr)
 {
-#ifdef DEBUG
-  Serial.println("delete_link");
-#endif
   if (addr == 0)
     return;
 
@@ -199,7 +231,6 @@ void delete_link(struct Link *p, uint16_t addr)
 
 void make_link_json(struct Link *p, String *s)
 {
-  Serial.println("make_link_json");
   *s = "{\"links\":[";
   struct Link *temp = p;
 
@@ -207,7 +238,7 @@ void make_link_json(struct Link *p, String *s)
   {
     temp = temp->next;
     char link_json[50];
-    sprintf(link_json, "{\"A\":\"%X\",\"R\":\"%.1f\"}", temp->anchor_addr, temp->range[0]);
+    sprintf(link_json, "{\"A\":\"%X\",\"R\":\"%.3f\"}", temp->anchor_addr, median_filter(temp->range_history, RANGE_HISTORY));
     *s += link_json;
     if (temp->next != NULL)
     {
@@ -304,50 +335,41 @@ int count_links(struct Link *p)
 
 void display_uwb(struct Link *p)
 {
-  struct Link *temp = p;
-  int row = 0;
+    struct Link *temp = p;
+    int row = 0;
 
-  display.clearDisplay();
+    display.clearDisplay();
+    display.setTextColor(SSD1306_WHITE);
 
-  display.setTextColor(SSD1306_WHITE);
+    if (temp->next == NULL)
+    {
+        display.setTextSize(2);
+        display.setCursor(0, 0);
+        display.println("No Anchor");
+        display.display();
+        return;
+    }
 
-  if (temp->next == NULL)
-  {
-    display.setTextSize(2);
-    display.setCursor(0, 0);
-    display.println("No Anchor");
+    while (temp->next != NULL)
+    {
+        temp = temp->next;
+
+        float filtered_range = median_filter(temp->range_history, RANGE_HISTORY);
+
+        char c[20];
+        sprintf(c, "%.2f m", filtered_range);
+
+        display.setTextSize(1);
+        display.setCursor(0, row++ * 20);
+
+        char buf[5];
+        sprintf(buf, "%04X", temp->anchor_addr); // hex address
+        display.print(buf);
+        display.print(" : ");
+        display.println(c);
+    }
+
     display.display();
-    return;
-  }
-
-  while (temp->next != NULL)
-  {
-    temp = temp->next;
-
-    // Serial.println("Dev %d:%d m", temp->next->anchor_addr, temp->next->range);
-    Serial.println(temp->anchor_addr, HEX);
-    Serial.println(temp->range[0]);
-
-    char c[30];
-
-    // sprintf(c, "%X:%.1f m %.1f", temp->anchor_addr, temp->range, temp->dbm);
-    // sprintf(c, "%X:%.1f m", temp->anchor_addr, temp->range);
-    sprintf(c, "%.2f m", temp->range);
-    display.setTextSize(1);
-    display.setCursor(0, row++ * 20); // Start at top-left corner
-
-    char buf[5];                             // 4 digits max + null terminator
-    sprintf(buf, "%04X", temp->anchor_addr); // convert to hex, 4 digits
-    display.print(buf);
-
-    display.print(" : ");
-    display.println(c);
-
-    display.println("");
-  }
-  delay(100);
-  display.display();
-  return;
 }
 
 void send_tcp(String *msg_json)
@@ -377,7 +399,7 @@ void setup()
 
   logoshow();
 
-  DW1000.setAntennaDelay(16436 - 0);
+  DW1000.setAntennaDelay(16436 + 85);
 
 #ifndef PUSHING_ANCHOR_CODE
   WiFi.disconnect(true);
