@@ -4,8 +4,8 @@ from scipy.optimize import minimize
 def main():
 
     # Speed of light and tick duration
-    c = 299_702_547  # m/s
-    tick_duration = 15.65e-12  # 15.65 ps
+    c = 299_702_547  # m/s in the air, not the void
+    tick_duration = 15.65e-12  # 15.65 ps average value
     meters_per_tick = c * tick_duration  # ~0.00469 m/tick
 
     # Devices
