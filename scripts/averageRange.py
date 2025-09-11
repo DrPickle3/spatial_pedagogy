@@ -21,7 +21,7 @@ def main():
     with open(filename, "r") as f:
         for line in f:
             # Match "from: AAA1       Range: 3.36 m"
-            match = re.search(r"from:\s*(\w+)\s+Range:\s*([\d.]+)\s*m", line)
+            match = re.search(r"from:\s*(\w+)\s+Range:\s*([1-9](?:\.\d+)?)\s*m", line)
             if match:
                 anchor_id = match.group(1)
                 value = float(match.group(2))

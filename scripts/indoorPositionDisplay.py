@@ -2,12 +2,15 @@ import time
 import turtle
 import socket
 import json
+import csv
 
 TCP_IP = "0.0.0.0"
 TCP_PORT = 5000
 
 ANCHOR1 = "AAA1"
 ANCHOR2 = "AAA4"
+
+filename = "../logs/positions.csv"
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 sock.bind((TCP_IP, TCP_PORT))
@@ -18,9 +21,13 @@ print(f"***Server listening on port {TCP_PORT}***")
 data, addr = sock.accept()
 print(f"***Connection accepted from {addr}***")
 
-distance_a1_a2 = 2.4892
-meter2pixel = 250
+distance_a1_a2 = 0.9398
+meter2pixel = 400
 range_offset = 0.0
+
+with open(filename, "w", newline = "") as file: #clear the file
+    writer = csv.writer(file)
+    writer.writerow(["x", "y"])
 
 def turtle_init(t=turtle):
     t.hideturtle()
@@ -96,17 +103,19 @@ def read_data():
 
     uwb_list = []
 
+    parts = line.split("}{")    #handles multiple JSON objects at the same time
+    last_part = parts[-1]
+
+    if not last_part.startswith("{"):
+        last_part = "{" + last_part
+
+    line = last_part
+
     try:
         uwb_data = json.loads(line)
-        print(uwb_data)
-
         uwb_list = uwb_data["links"]
-        for uwb_archor in uwb_list:
-            print(uwb_archor)
-
-    except:
-        print(line)
-    print("")
+    except Exception as e:
+        print("EXCEPTION!", e, line)
 
     return uwb_list
 
@@ -164,7 +173,11 @@ def main():
 
         if node_count == 2:
             x, y = tag_pos(a2_range, a1_range, distance_a1_a2)
-            print(x, y)
+
+            with open(filename, "a", newline="") as file:
+                writer = csv.writer(file)
+                writer.writerow([x, y])
+
             clean(t_a3)
             draw_uwb_tag(x, y, "TAG", t_a3)
 

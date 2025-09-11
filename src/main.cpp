@@ -11,7 +11,7 @@
 #include <vector>
 #include "secrets.h"
 
-char ANCHOR_ADD[] = "A1:AA:5B:D5:A9:9A:E2:9C";
+char ANCHOR_ADD[] = "A3:AA:5B:D5:A9:9A:E2:9C";
 char TAG_ADDR[] = "7D:00:22:EA:82:60:3B:9B";
 
 // SAVED ANCHOR CALIBRATIONS (Not good anymore)
@@ -32,11 +32,12 @@ char TAG_ADDR[] = "7D:00:22:EA:82:60:3B:9B";
 * True Distance Anchor1/Anchor4 : 1.7018
 * 
 * 
-* Corrections :
-* Tag: 303 => 123 => 39
-* Anchor1 : 660 => 142 => 85
-* Anchor4 : 453 => 97 => 58
-* 
+* ------------- Corrections --------------
+* Tag     : 39
+* Anchor1 : 85
+* Anchor4 : 58
+* Anchor2 : 98
+* Anchor3 : 89
 * 
 * Distance from Tag to Anchor 1 : 1.905
 * True Distance Tag/Anchor1 : 1.901
@@ -246,7 +247,6 @@ void make_link_json(struct Link *p, String *s)
     }
   }
   *s += "]}";
-  Serial.println(*s);
 }
 #endif
 
@@ -360,7 +360,7 @@ void display_uwb(struct Link *p)
         sprintf(c, "%.2f m", filtered_range);
 
         display.setTextSize(1);
-        display.setCursor(0, row++ * 20);
+        display.setCursor(0, row++ * 16);
 
         char buf[5];
         sprintf(buf, "%04X", temp->anchor_addr); // hex address
@@ -377,7 +377,6 @@ void send_tcp(String *msg_json)
   if (client.connected())
   {
     client.print(*msg_json);
-    Serial.println("TCP send");
   }
 }
 #endif
@@ -399,7 +398,7 @@ void setup()
 
   logoshow();
 
-  DW1000.setAntennaDelay(16436 + 85);
+  DW1000.setAntennaDelay(16436 + 39);
 
 #ifndef PUSHING_ANCHOR_CODE
   WiFi.disconnect(true);
