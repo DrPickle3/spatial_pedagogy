@@ -22,33 +22,33 @@ char TAG_ADDR[] = "7D:00:22:EA:82:60:3B:9B";
 // REF TAG = 16436
 
 /*
-* Distance from Tag to Anchor 1 : 3.449
-* True Distance Tag/Anchor1 : 2.8702
-* 
-* Distance measured from Tag to Anchor 4 : 3.045
-* True Distance Tag/Anchor4 : 2.5908
-* 
-* Distance measured from Anchor 1 to Anchor 4 : 2.370
-* True Distance Anchor1/Anchor4 : 1.7018
-* 
-* 
-* ------------- Corrections --------------
-* Tag     : 39
-* Anchor1 : 85
-* Anchor4 : 58
-* Anchor2 : 98
-* Anchor3 : 89
-* 
-* Distance from Tag to Anchor 1 : 1.905
-* True Distance Tag/Anchor1 : 1.901
-* 
-* Distance measured from Tag to Anchor 4 : 1.8288
-* True Distance Tag/Anchor4 : 1.842
-* 
-* Distance measured from Anchor 1 to Anchor 4 : 2.370
-* True Distance Anchor1/Anchor4 : 1.7018
-* 
-*/
+ * Distance from Tag to Anchor 1 : 3.449
+ * True Distance Tag/Anchor1 : 2.8702
+ *
+ * Distance measured from Tag to Anchor 4 : 3.045
+ * True Distance Tag/Anchor4 : 2.5908
+ *
+ * Distance measured from Anchor 1 to Anchor 4 : 2.370
+ * True Distance Anchor1/Anchor4 : 1.7018
+ *
+ *
+ * ------------- Corrections --------------
+ * Tag     : 39
+ * Anchor1 : 85
+ * Anchor4 : 58
+ * Anchor2 : 98
+ * Anchor3 : 89
+ *
+ * Distance from Tag to Anchor 1 : 1.905
+ * True Distance Tag/Anchor1 : 1.901
+ *
+ * Distance measured from Tag to Anchor 4 : 1.8288
+ * True Distance Tag/Anchor4 : 1.842
+ *
+ * Distance measured from Anchor 1 to Anchor 4 : 2.370
+ * True Distance Anchor1/Anchor4 : 1.7018
+ *
+ */
 
 #define SPI_SCK 18
 #define SPI_MISO 19
@@ -74,20 +74,21 @@ const char *ssid = "CamPhone"; // works even on eduroam
 WiFiClient client;
 String all_json = "";
 
-const char *serverIP = "10.172.206.138";
+const char *serverIP = "10.172.19.138";
 const uint16_t serverPort = 5000;
 
 float median_filter(float *arr, int size)
 {
-    std::vector<float> temp;
-    for (int i = 0; i < size; i++)
-        if (arr[i] > 0.01) // ignore zeros
-            temp.push_back(arr[i]);
+  std::vector<float> temp;
+  for (int i = 0; i < size; i++)
+    if (arr[i] > 0.01) // ignore zeros
+      temp.push_back(arr[i]);
 
-    if (temp.empty()) return 0.0;
+  if (temp.empty())
+    return 0.0;
 
-    std::sort(temp.begin(), temp.end());
-    return temp[temp.size() / 2];
+  std::sort(temp.begin(), temp.end());
+  return temp[temp.size() / 2];
 }
 
 struct Link
@@ -174,24 +175,25 @@ struct Link *find_link(struct Link *p, uint16_t addr)
   return NULL;
 }
 
-void fresh_link(struct Link *p, uint16_t addr, float range, float dbm)  
+void fresh_link(struct Link *p, uint16_t addr, float range, float dbm)
 {
-    if (range < 0.1 || range > 10.0) return; // Ignore negative values and above 10 meters
+  if (range < 0.1 || range > 10.0)
+    return; // Ignore negative values and above 10 meters
 
-    struct Link *temp = find_link(p, addr);
-    if (temp != NULL)
-    {
-        // Insert new value in circular buffer
-        temp->range_history[temp->history_index] = range;
-        temp->history_index = (temp->history_index + 1) % RANGE_HISTORY;
+  struct Link *temp = find_link(p, addr);
+  if (temp != NULL)
+  {
+    // Insert new value in circular buffer
+    temp->range_history[temp->history_index] = range;
+    temp->history_index = (temp->history_index + 1) % RANGE_HISTORY;
 
-        // Save RX power
-        temp->dbm = dbm;
-    }
-    else
-    {
-        Serial.println("fresh_link:Fresh fail");
-    }
+    // Save RX power
+    temp->dbm = dbm;
+  }
+  else
+  {
+    Serial.println("fresh_link:Fresh fail");
+  }
 }
 
 void print_link(struct Link *p)
@@ -335,41 +337,41 @@ int count_links(struct Link *p)
 
 void display_uwb(struct Link *p)
 {
-    struct Link *temp = p;
-    int row = 0;
+  struct Link *temp = p;
+  int row = 0;
 
-    display.clearDisplay();
-    display.setTextColor(SSD1306_WHITE);
+  display.clearDisplay();
+  display.setTextColor(SSD1306_WHITE);
 
-    if (temp->next == NULL)
-    {
-        display.setTextSize(2);
-        display.setCursor(0, 0);
-        display.println("No Anchor");
-        display.display();
-        return;
-    }
-
-    while (temp->next != NULL)
-    {
-        temp = temp->next;
-
-        float filtered_range = median_filter(temp->range_history, RANGE_HISTORY);
-
-        char c[20];
-        sprintf(c, "%.2f m", filtered_range);
-
-        display.setTextSize(1);
-        display.setCursor(0, row++ * 16);
-
-        char buf[5];
-        sprintf(buf, "%04X", temp->anchor_addr); // hex address
-        display.print(buf);
-        display.print(" : ");
-        display.println(c);
-    }
-
+  if (temp->next == NULL)
+  {
+    display.setTextSize(2);
+    display.setCursor(0, 0);
+    display.println("No Anchor");
     display.display();
+    return;
+  }
+
+  while (temp->next != NULL)
+  {
+    temp = temp->next;
+
+    float filtered_range = median_filter(temp->range_history, RANGE_HISTORY);
+
+    char c[20];
+    sprintf(c, "%.2f m", filtered_range);
+
+    display.setTextSize(1);
+    display.setCursor(0, row++ * 16);
+
+    char buf[5];
+    sprintf(buf, "%04X", temp->anchor_addr); // hex address
+    display.print(buf);
+    display.print(" : ");
+    display.println(c);
+  }
+
+  display.display();
 }
 
 void send_tcp(String *msg_json)
@@ -423,7 +425,45 @@ void setup()
   }
   else
   {
-    Serial.println("Connection failed");
+    client.stop();
+    Serial.print("Connection failed. WiFi status: ");
+    wl_status_t status = WiFi.status();
+    Serial.println(status); // numeric code
+
+    // Optional: map status to a readable reason
+    switch (status)
+    {
+    case WL_IDLE_STATUS:
+      Serial.println("Idle");
+      break;
+    case WL_NO_SSID_AVAIL:
+      Serial.println("SSID not available");
+      break;
+    case WL_SCAN_COMPLETED:
+      Serial.println("Scan completed");
+      break;
+    case WL_CONNECTED:
+      Serial.println("Still connected to WiFi");
+      break;
+    case WL_CONNECT_FAILED:
+      Serial.println("WiFi connect failed");
+      break;
+    case WL_CONNECTION_LOST:
+      Serial.println("Connection lost");
+      break;
+    case WL_DISCONNECTED:
+      Serial.println("Disconnected");
+      break;
+    default:
+      Serial.println("Unknown status");
+      break;
+    }
+
+    // If it's a socket-level error, also print errno
+    Serial.print("Socket error: ");
+    Serial.print(errno);
+    Serial.print(" -> ");
+    Serial.println(strerror(errno));
   }
 #endif
 

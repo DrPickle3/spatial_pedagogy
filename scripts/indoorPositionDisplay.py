@@ -7,22 +7,24 @@ import csv
 TCP_IP = "0.0.0.0"
 TCP_PORT = 5000
 
-ANCHOR1 = "AAA1"
-ANCHOR2 = "AAA4"
+ANCHOR1 = "AAA3"
+ANCHOR2 = "AAA1"
 
 filename = "../logs/positions.csv"
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 sock.bind((TCP_IP, TCP_PORT))
 sock.listen(1)
+
 
 print(f"***Server listening on port {TCP_PORT}***")
 
 data, addr = sock.accept()
 print(f"***Connection accepted from {addr}***")
 
-distance_a1_a2 = 0.9398
-meter2pixel = 400
+distance_a1_a2 = 4.6228
+meter2pixel = 100
 range_offset = 0.0
 
 with open(filename, "w", newline = "") as file: #clear the file
@@ -97,27 +99,39 @@ def draw_uwb_tag(x, y, txt, t):
               "black",  t, f=('Arial', 16, 'normal'))
 
 
+recv_buffer = ""
+
 def read_data():
-
-    line = data.recv(1024).decode('UTF-8')
-
-    uwb_list = []
-
-    parts = line.split("}{")    #handles multiple JSON objects at the same time
-    last_part = parts[-1]
-
-    if not last_part.startswith("{"):
-        last_part = "{" + last_part
-
-    line = last_part
-
+    global recv_buffer
     try:
-        uwb_data = json.loads(line)
-        uwb_list = uwb_data["links"]
-    except Exception as e:
-        print("EXCEPTION!", e, line)
+        chunk = data.recv(1024).decode('UTF-8')
+        if not chunk:
+            return []  # connection closed
+        recv_buffer += chunk
 
-    return uwb_list
+        # Look for complete JSON objects
+        uwb_list = []
+        while True:
+            start = recv_buffer.find('{')
+            end = recv_buffer.find('}', start)
+            if start == -1 or end == -1:
+                break  # incomplete JSON, wait for more data
+
+            json_str = recv_buffer[start:end+1]
+            recv_buffer = recv_buffer[end+1:]  # remove processed chunk
+
+            try:
+                obj = json.loads(json_str)
+                if "links" in obj:
+                    uwb_list = obj["links"]
+            except Exception as e:
+                print("EXCEPTION!", e, json_str)
+                continue
+
+        return uwb_list
+    except Exception as e:
+        print("EXCEPTION!", e)
+        return []
 
 
 def tag_pos(a, b, c):
