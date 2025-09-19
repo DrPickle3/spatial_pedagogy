@@ -6,3 +6,4 @@
 *.odt
 secrets.h
 .~lock.*
+logs/positions.csv

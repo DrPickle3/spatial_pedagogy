@@ -11,7 +11,7 @@
 #include <vector>
 #include "secrets.h"
 
-char ANCHOR_ADD[] = "A4:AA:5B:D5:A9:9A:E2:9C";
+char ANCHOR_ADD[] = "A7:AA:5B:D5:A9:9A:E2:9C";
 char TAG_ADDR[] = "7D:00:22:EA:82:60:3B:9B";
 
 // SAVED ANCHOR CALIBRATIONS (Not good anymore)
@@ -35,16 +35,19 @@ char TAG_ADDR[] = "7D:00:22:EA:82:60:3B:9B";
  * ------------- Corrections --------------
  * Tag     : 39
  * Anchor1 : 85
- * Anchor4 : 58
  * Anchor2 : 98
  * Anchor3 : 89
+ * Anchor4 : 58
  * 
  * --------- Second Corrections -----------
  * Tag     : 81 ?
  * Anchor1 : 22 ?
+ * Anchor2 : 41 ?
+ * Anchor3 : 21 ?
  * Anchor4 : 4 ?
- * Anchor2 : ?
- * Anchor3 : ?
+ * Anchor5 : 28
+ * Anchor6 : 0 ???????????? crazy
+ * Anchor7 : 0 ????????????
  *
  * Distance from Tag to Anchor 1 : 1.905
  * True Distance Tag/Anchor1 : 1.901
@@ -56,6 +59,15 @@ char TAG_ADDR[] = "7D:00:22:EA:82:60:3B:9B";
  * True Distance Anchor1/Anchor4 : 1.7018
  *
  */
+
+#define TAG_ANT_DELAY 81
+#define A1_ANT_DELAY 22
+#define A2_ANT_DELAY 41
+#define A3_ANT_DELAY 21
+#define A4_ANT_DELAY 4
+#define A5_ANT_DELAY 28
+#define A6_ANT_DELAY 0
+#define A7_ANT_DELAY 0
 
 #define SPI_SCK 18
 #define SPI_MISO 19
@@ -71,7 +83,7 @@ char TAG_ADDR[] = "7D:00:22:EA:82:60:3B:9B";
 #define RANGE_HISTORY 5
 
 // Comment to push tag code
-#define PUSHING_ANCHOR_CODE
+// #define PUSHING_ANCHOR_CODE
 
 Adafruit_SSD1306 display(128, 64, &Wire, -1);
 
@@ -83,6 +95,18 @@ String all_json = "";
 
 const char *serverIP = "10.172.19.138";
 const uint16_t serverPort = 5000;
+
+uint16_t getAntennaDelay(const char *addr) {
+  if (strcmp(addr, "A1:AA:5B:D5:A9:9A:E2:9C") == 0) return A1_ANT_DELAY;
+  if (strcmp(addr, "A2:AA:5B:D5:A9:9A:E2:9C") == 0) return A2_ANT_DELAY;
+  if (strcmp(addr, "A3:AA:5B:D5:A9:9A:E2:9C") == 0) return A3_ANT_DELAY;
+  if (strcmp(addr, "A4:AA:5B:D5:A9:9A:E2:9C") == 0) return A4_ANT_DELAY;
+  if (strcmp(addr, "A5:AA:5B:D5:A9:9A:E2:9C") == 0) return A5_ANT_DELAY;
+  if (strcmp(addr, "A6:AA:5B:D5:A9:9A:E2:9C") == 0) return A6_ANT_DELAY;
+  if (strcmp(addr, "A7:AA:5B:D5:A9:9A:E2:9C") == 0) return A7_ANT_DELAY;
+
+  return TAG_ANT_DELAY; // fallback
+}
 
 float median_filter(float *arr, int size)
 {
@@ -407,7 +431,11 @@ void setup()
 
   logoshow();
 
-  DW1000.setAntennaDelay(16436 + 4);
+#ifdef PUSHING_ANCHOR_CODE
+  DW1000.setAntennaDelay(16436 + getAntennaDelay(ANCHOR_ADD));
+#else
+  DW1000.setAntennaDelay(16436 + TAG_ANT_DELAY);
+#endif
 
 #ifndef PUSHING_ANCHOR_CODE
   WiFi.disconnect(true);
@@ -434,43 +462,6 @@ void setup()
   {
     client.stop();
     Serial.print("Connection failed. WiFi status: ");
-    wl_status_t status = WiFi.status();
-    Serial.println(status); // numeric code
-
-    // Optional: map status to a readable reason
-    switch (status)
-    {
-    case WL_IDLE_STATUS:
-      Serial.println("Idle");
-      break;
-    case WL_NO_SSID_AVAIL:
-      Serial.println("SSID not available");
-      break;
-    case WL_SCAN_COMPLETED:
-      Serial.println("Scan completed");
-      break;
-    case WL_CONNECTED:
-      Serial.println("Still connected to WiFi");
-      break;
-    case WL_CONNECT_FAILED:
-      Serial.println("WiFi connect failed");
-      break;
-    case WL_CONNECTION_LOST:
-      Serial.println("Connection lost");
-      break;
-    case WL_DISCONNECTED:
-      Serial.println("Disconnected");
-      break;
-    default:
-      Serial.println("Unknown status");
-      break;
-    }
-
-    // If it's a socket-level error, also print errno
-    Serial.print("Socket error: ");
-    Serial.print(errno);
-    Serial.print(" -> ");
-    Serial.println(strerror(errno));
   }
 #endif
 

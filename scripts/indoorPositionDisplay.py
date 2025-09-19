@@ -9,8 +9,8 @@ import matplotlib.pyplot as plt
 TCP_IP = "0.0.0.0"
 TCP_PORT = 5000
 
-ANCHOR1 = "AAA1"
-ANCHOR2 = "AAA4"
+ANCHOR1 = "AAA4"
+ANCHOR2 = "AAA7"
 
 positions = []
 
@@ -27,7 +27,7 @@ print(f"***Server listening on port {TCP_PORT}***")
 data, addr = sock.accept()
 print(f"***Connection accepted from {addr}***")
 
-distance_a1_a2 = 2.54
+distance_a1_a2 = 2.2098
 meter2pixel = 150
 range_offset = 0.0
 

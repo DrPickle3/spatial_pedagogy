@@ -1,22 +1,22 @@
-import csv
+from collections import defaultdict
 
-def average_x(filename):
-    values = []
+filename = "../logs/positions.csv"  # your CSV file
 
-    with open(filename, newline='') as csvfile:
-        reader = csv.DictReader(csvfile)
-        for row in reader:
-            values.append(float(row['x']))
+# store ranges per device
+ranges = defaultdict(list)
 
-    if values:
-        return sum(values) / len(values)
-    else:
-        return None
+with open(filename, "r") as f:
+    for line in f:
+        line = line.strip()
+        if not line:
+            continue
+        # example line: "from: AAA7 Range: 2.100 m RX power: 0 dBm"
+        parts = line.split()
+        device = parts[1]  # AAA7
+        range_value = float(parts[3])  # 2.100
+        ranges[device].append(range_value)
 
-if __name__ == "__main__":
-    filename = "../logs/positions.csv"  # replace with your CSV file path
-    avg = average_x(filename)
-    if avg is not None:
-        print(f"Average x = {avg:.2f}")
-    else:
-        print("No data found.")
+# compute averages
+for device, values in ranges.items():
+    avg = sum(values) / len(values)
+    print(f"Device {device} average range = {avg:.3f} m over {len(values)} measures")
