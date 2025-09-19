@@ -13,16 +13,16 @@ def main():
 
     # True distances between devices (in meters)
     true_distances = {
-        ('Tag', 'Anchor1'): 2.8702,
-        ('Tag', 'Anchor4'): 2.5908,
-        ('Anchor1', 'Anchor4'): 1.7018
+        ('Tag', 'Anchor1'): 3.6068,
+        ('Tag', 'Anchor4'): 3.8608,
+        ('Anchor1', 'Anchor4'): 2.5400
     }
 
     # Measured distances (in meters)
     measured_distances = {
-        ('Tag', 'Anchor1'): 3.449,
-        ('Tag', 'Anchor4'): 3.045,
-        ('Anchor1', 'Anchor4'): 2.370
+        ('Tag', 'Anchor1'): 4.092,
+        ('Tag', 'Anchor4'): 4.262,
+        ('Anchor1', 'Anchor4'): 2.664
     }
 
     # Objective function: sum of squared differences between corrected and true distances

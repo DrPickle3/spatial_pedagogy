@@ -18,7 +18,7 @@ TCP_PORT = 5000
 #     "AAA4": (3.2766, 0.1524, 0.7366),
 # }
 anchors = {
-    "AAA1": (0.0, 0.0, 0.0),
+    "AAA1": (1.397, 0.0, 0.0),
     "AAA2": (0.0, 0.0, 0.0),
     "AAA3": (0.0, 0.0, 0.0),
     "AAA4": (0.0, 0.0, 0.0),
@@ -27,6 +27,7 @@ anchors = {
 filename = "../logs/positions.csv"
 
 positions = []
+distance_a1_a2 = 1.397
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 sock.bind((TCP_IP, TCP_PORT))
@@ -145,20 +146,19 @@ def tag_pos(ranges, anchors):
         return np.sum((est - dists) ** 2)
 
     result = minimize(error, x0=np.mean(anchor_coords, axis=0))
-    return dists[0]
+    return float(result.x[0]), float(result.x[1])
 
 def update_scatter():
     if not positions:
         return
     plt.clf()
-    xs = [p for p in positions]   # only X axis
-    ys = [0 for _ in xs]             # all at y=0
-    plt.scatter(xs, ys, c="blue", s=20, alpha=0.6, label="Tag X positions")
+    xs, ys = zip(*positions)
+    plt.scatter(xs, ys, c="blue", s=20, alpha=0.6, label="Tag positions")
     plt.xlabel("X (m)")
-    plt.yticks([])  # remove y-axis ticks since it's 1D
-    plt.title("Nuage de points 1D - Précision sur X")
+    plt.ylabel("Y (m)")
+    plt.title("Nuage de points 2D - Précision de localisation")
     plt.legend()
-    plt.grid(True, axis="x")
+    plt.grid(True)
     plt.pause(0.01)
 
 def main():
@@ -196,18 +196,18 @@ def main():
                         pos_y = 150 - ay * meter2pixel
                         draw_uwb_anchor(pos_x, pos_y, one["A"], t_anchors)
 
-                if len(ranges) >= 1:
-                    x = tag_pos(ranges, anchors)
+                if len(ranges) >= 2:
+                    x, y = tag_pos(ranges, anchors)
                     with open(filename, "a", newline="") as file:
                         writer = csv.writer(file)
-                        writer.writerow([x])
+                        writer.writerow([x, y])
 
-                    if x != 0:
-                        positions.append((x))
+                    if x > 0.1 and y > 0.1:
+                        positions.append((x, y))
                     update_scatter()
 
                     clean(t_tag)
-                    draw_uwb_tag(x, x, "TAG", t_tag)
+                    draw_uwb_tag(x, y, "TAG", t_tag)
 
                 time.sleep(0.1)
 

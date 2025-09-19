@@ -3,12 +3,16 @@ import turtle
 import socket
 import json
 import csv
+import re
+import matplotlib.pyplot as plt
 
 TCP_IP = "0.0.0.0"
 TCP_PORT = 5000
 
-ANCHOR1 = "AAA3"
-ANCHOR2 = "AAA1"
+ANCHOR1 = "AAA1"
+ANCHOR2 = "AAA4"
+
+positions = []
 
 filename = "../logs/positions.csv"
 
@@ -23,13 +27,13 @@ print(f"***Server listening on port {TCP_PORT}***")
 data, addr = sock.accept()
 print(f"***Connection accepted from {addr}***")
 
-distance_a1_a2 = 4.6228
-meter2pixel = 100
+distance_a1_a2 = 2.54
+meter2pixel = 150
 range_offset = 0.0
 
 with open(filename, "w", newline = "") as file: #clear the file
     writer = csv.writer(file)
-    writer.writerow(["x", "y"])
+    # writer.writerow(["x", "y"])
 
 def turtle_init(t=turtle):
     t.hideturtle()
@@ -99,36 +103,41 @@ def draw_uwb_tag(x, y, txt, t):
               "black",  t, f=('Arial', 16, 'normal'))
 
 
-recv_buffer = ""
+buffer = ""
 
-def read_data():
-    global recv_buffer
+def read_data(conn):
+    global buffer
     try:
-        chunk = data.recv(1024).decode('UTF-8')
-        if not chunk:
-            return []  # connection closed
-        recv_buffer += chunk
+        # Read new data
+        chunk = conn.recv(1024).decode("utf-8")
+        buffer += chunk
 
-        # Look for complete JSON objects
         uwb_list = []
-        while True:
-            start = recv_buffer.find('{')
-            end = recv_buffer.find('}', start)
-            if start == -1 or end == -1:
-                break  # incomplete JSON, wait for more data
 
-            json_str = recv_buffer[start:end+1]
-            recv_buffer = recv_buffer[end+1:]  # remove processed chunk
+        # Use regex to extract complete JSON objects
+        pattern = r'\{"links":\s*\[.*?\]\}'
 
-            try:
-                obj = json.loads(json_str)
-                if "links" in obj:
-                    uwb_list = obj["links"]
-            except Exception as e:
-                print("EXCEPTION!", e, json_str)
-                continue
+        matches = re.findall(pattern, buffer)
+
+        if not matches:
+            return uwb_list  # nothing complete yet
+
+        # Keep only the last complete JSON object
+        last_json = matches[-1]
+
+        # Remove everything up to and including last complete JSON
+        last_index = buffer.rfind(last_json) + len(last_json)
+        buffer = buffer[last_index:]
+
+        # Parse it
+        uwb_data = json.loads(last_json)
+        uwb_list = uwb_data.get("links", [])
 
         return uwb_list
+
+    except json.JSONDecodeError as e:
+        print("EXCEPTION!", e, last_json if 'last_json' in locals() else buffer)
+        return []
     except Exception as e:
         print("EXCEPTION!", e)
         return []
@@ -146,6 +155,18 @@ def tag_pos(a, b, c):
 
     return round(x.real, 3), round(y.real, 3)
 
+def update_scatter():
+    if not positions:
+        return
+    plt.clf()
+    xs, ys = zip(*positions)
+    plt.scatter(xs, ys, c="blue", s=20, alpha=0.6, label="Tag positions")
+    plt.xlabel("X (m)")
+    plt.ylabel("Y (m)")
+    plt.title("Nuage de points 2D - Précision de localisation")
+    plt.legend()
+    plt.grid(True)
+    plt.pause(0.01)
 
 def main():
 
@@ -169,7 +190,7 @@ def main():
 
     while True:
         node_count = 0
-        list = read_data()
+        list = read_data(data)
 
         for one in list:
             if one["A"] == ANCHOR1:
@@ -190,7 +211,12 @@ def main():
 
             with open(filename, "a", newline="") as file:
                 writer = csv.writer(file)
-                writer.writerow([x, y])
+                writer.writerow([f"from: {ANCHOR1} Range: {a1_range:.3f} m RX power: 0 dBm"])
+                writer.writerow([f"from: {ANCHOR2} Range: {a2_range:.3f} m RX power: 0 dBm"])
+
+            if x > 0.1 and y > 0.1:
+                positions.append((x, y))
+            update_scatter()
 
             clean(t_a3)
             draw_uwb_tag(x, y, "TAG", t_a3)
