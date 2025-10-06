@@ -38,7 +38,7 @@ char TAG_ADDR[] = "7D:00:22:EA:82:60:3B:9B";
  * Anchor2 : 98
  * Anchor3 : 89
  * Anchor4 : 58
- * 
+ *
  * --------- Second Corrections -----------
  * Tag     : 81 ?
  * Anchor1 : 22 ?
@@ -93,17 +93,25 @@ const char *ssid = "CamPhone"; // works even on eduroam
 WiFiClient client;
 String all_json = "";
 
-const char *serverIP = "10.172.19.138";
+const char *serverIP = "spatialPedagogy.local";
 const uint16_t serverPort = 5000;
 
-uint16_t getAntennaDelay(const char *addr) {
-  if (strcmp(addr, "A1:AA:5B:D5:A9:9A:E2:9C") == 0) return A1_ANT_DELAY;
-  if (strcmp(addr, "A2:AA:5B:D5:A9:9A:E2:9C") == 0) return A2_ANT_DELAY;
-  if (strcmp(addr, "A3:AA:5B:D5:A9:9A:E2:9C") == 0) return A3_ANT_DELAY;
-  if (strcmp(addr, "A4:AA:5B:D5:A9:9A:E2:9C") == 0) return A4_ANT_DELAY;
-  if (strcmp(addr, "A5:AA:5B:D5:A9:9A:E2:9C") == 0) return A5_ANT_DELAY;
-  if (strcmp(addr, "A6:AA:5B:D5:A9:9A:E2:9C") == 0) return A6_ANT_DELAY;
-  if (strcmp(addr, "A7:AA:5B:D5:A9:9A:E2:9C") == 0) return A7_ANT_DELAY;
+uint16_t getAntennaDelay(const char *addr)
+{
+  if (strcmp(addr, "A1:AA:5B:D5:A9:9A:E2:9C") == 0)
+    return A1_ANT_DELAY;
+  if (strcmp(addr, "A2:AA:5B:D5:A9:9A:E2:9C") == 0)
+    return A2_ANT_DELAY;
+  if (strcmp(addr, "A3:AA:5B:D5:A9:9A:E2:9C") == 0)
+    return A3_ANT_DELAY;
+  if (strcmp(addr, "A4:AA:5B:D5:A9:9A:E2:9C") == 0)
+    return A4_ANT_DELAY;
+  if (strcmp(addr, "A5:AA:5B:D5:A9:9A:E2:9C") == 0)
+    return A5_ANT_DELAY;
+  if (strcmp(addr, "A6:AA:5B:D5:A9:9A:E2:9C") == 0)
+    return A6_ANT_DELAY;
+  if (strcmp(addr, "A7:AA:5B:D5:A9:9A:E2:9C") == 0)
+    return A7_ANT_DELAY;
 
   return TAG_ANT_DELAY; // fallback
 }
@@ -490,7 +498,7 @@ void loop()
 {
   DW1000Ranging.loop();
 #ifndef PUSHING_ANCHOR_CODE
-  if ((millis() - runtime) > 100)
+  if ((millis() - runtime) > 500)
   {
     make_link_json(uwb_data, &all_json);
     send_tcp(&all_json);

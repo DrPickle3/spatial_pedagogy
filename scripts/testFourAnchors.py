@@ -2,6 +2,8 @@ import time
 import re
 import turtle
 import socket
+import socketserver
+from zeroconf import ServiceInfo, Zeroconf
 import json
 import csv
 import numpy as np
@@ -12,18 +14,33 @@ TCP_IP = "0.0.0.0"
 TCP_PORT = 5000
 #tag : 0.9652, 1.4224       2D: (1.06, 1.30)
 anchors = {
-    "AAA1": (0.0, 0.0, 0.0),
-    "AAA2": (0.0, 1.4986, 0.8128),
+    "AAA1": (0.0, 2.4892, 1.1176),#        sur ordi
+    "AAA2": (2.9972, 0.5588, 2.032),#  porte chambre
     "AAA3": (0.0, 0.0, 0.0),
-    "AAA4": (0.0, 0.0, 2.032),
-    "AAA5": (0.7366, 1.7018, 0.5588),
+    "AAA4": (0.0, 0.0, 1.1176),#       coin du lit
+    "AAA5": (0.0, 0.0, 0.0),
     "AAA6": (0.0, 0.0, 0.0),
-    "AAA7": (2.2098, 0.0, 1.8796),
+    "AAA7": (2.9972, 2.7432, 1.8796),# garde-robe
 }
 
 filename = "../logs/positions.csv"
 
 positions = []
+
+hostname = socket.gethostname()
+local_ip = socket.gethostbyname(hostname)
+
+info = ServiceInfo(
+    "_tcpserver._tcp.local.",             # service type
+    "spatialPedagogy._tcpserver._tcp.local.", # service name
+    addresses=[socket.inet_aton(local_ip)],
+    port=TCP_PORT,
+    properties={},
+    server=f"spatialPedagogy.local."
+)
+
+zeroconf = Zeroconf()
+zeroconf.register_service(info)
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -155,14 +172,33 @@ def update_scatter():
     if not positions:
         return
     plt.clf()
+    
+    # Plot tag positions
     xs, ys = zip(*positions)
     plt.scatter(xs, ys, c="blue", s=20, alpha=0.6, label="Tag positions")
+
+    # Plot anchors in red with a different marker
+    anchor_xs = [coord[0] for coord in anchors.values()]
+    anchor_ys = [coord[1] for coord in anchors.values()]
+    plt.scatter(anchor_xs, anchor_ys, c="red", s=80, marker="X", label="Anchors")
+
+    # Set plot limits with margin
+    margin = 0.5
+    xmin, xmax = min(anchor_xs) - margin, max(anchor_xs) + margin
+    ymin, ymax = min(anchor_ys) - margin, max(anchor_ys) + margin
+    plt.xlim(xmin, xmax)
+    plt.ylim(ymin, ymax)
+
+    plt.gca().invert_yaxis()
+
     plt.xlabel("X (m)")
     plt.ylabel("Y (m)")
     plt.title("Nuage de points 2D - Précision de localisation")
     plt.legend()
     plt.grid(True)
-    plt.pause(0.01)
+    plt.pause(0.1)
+
+
 
 def main():
     screen = turtle.Screen()
@@ -172,11 +208,8 @@ def main():
     t_ui = turtle.Turtle()
     t_anchors = turtle.Turtle()
     t_tag = turtle.Turtle()
-    turtle_init(t_ui)
     turtle_init(t_anchors)
     turtle_init(t_tag)
-
-    draw_ui(t_ui)
 
     while True:
         print(f"***Waiting for connection on port {TCP_PORT}***")
@@ -209,7 +242,7 @@ def main():
 
                     if x > 0.1 and y > 0.1:
                         positions.append((x, y))
-                    update_scatter()
+                    # update_scatter()
 
                     clean(t_tag)
                     draw_uwb_tag(x, y, "TAG", t_tag)
