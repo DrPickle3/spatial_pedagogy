@@ -93,6 +93,8 @@ const char *ssid = "CamPhone"; // works even on eduroam
 WiFiClient client;
 String all_json = "";
 
+TaskHandle_t networkTask;
+
 const char *serverIP = "spatialPedagogy.local";
 const uint16_t serverPort = 5000;
 
@@ -420,6 +422,23 @@ void send_tcp(String *msg_json)
     client.print(*msg_json);
   }
 }
+
+long int runtime = 0;
+
+void networkLoop(void *parameter)
+{
+  while (1) //Infinite loop
+  {
+    if ((millis() - runtime) > 500)
+    {
+      make_link_json(uwb_data, &all_json);
+      send_tcp(&all_json);
+      display_uwb(uwb_data);
+      runtime = millis();
+    }
+    vTaskDelay(10 / portTICK_PERIOD_MS); // Small delay
+  }
+}
 #endif
 
 void setup()
@@ -465,6 +484,8 @@ void setup()
   if (client.connect(serverIP, serverPort))
   {
     Serial.println("Connected to server!");
+    client.setNoDelay(true);
+    client.setTimeout(50);
   }
   else
   {
@@ -489,21 +510,25 @@ void setup()
 #else
   DW1000Ranging.startAsTag(TAG_ADDR, DW1000.MODE_LONGDATA_RANGE_LOWPOWER);
   uwb_data = init_link();
+
+  delay(1000);
+
+  Serial.println("Creating network task...");
+  xTaskCreatePinnedToCore(
+      networkLoop,   /* Function */
+      "NetworkTask", /* Name */
+      10000,         /* Stack size (bytes) */
+      NULL,          /* Parameters */
+      1,             /* Priority */
+      &networkTask,  /* Task handle */
+      0              /* Core 0 */
+  );
+  Serial.println("Network task created!");
 #endif
 }
-
-long int runtime = 0;
 
 void loop()
 {
   DW1000Ranging.loop();
-#ifndef PUSHING_ANCHOR_CODE
-  if ((millis() - runtime) > 500)
-  {
-    make_link_json(uwb_data, &all_json);
-    send_tcp(&all_json);
-    display_uwb(uwb_data);
-    runtime = millis();
-  }
-#endif
+  yield();  //Let the uwb breathe
 }
