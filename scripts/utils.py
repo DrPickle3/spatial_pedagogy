@@ -25,13 +25,13 @@ meter2pixel = 200
 # }
 
 anchors = {
-    "AAA1": (1.5, 0.2, 0.2),
-    "AAA2": (0.0, 0.0, 0.0),
-    "AAA3": (3.0, 0.0, 0.0),
-    "AAA4": (0.6, 0.0, 0.8),
+    "AAA1": (1.5, 0.2, 0.0),
+    "AAA2": (0.0, 0.0, 1.4986),        # bureau metal
+    "AAA3": (3.175, 0.0, 0.7366),      # coin bureau fenetre
+    "AAA4": (3.175, 1.4478, 0.7366),   # a cote de lordi
     "AAA5": (0.0, 0.0, 0.0),
     "AAA6": (0.0, 0.0, 0.0),
-    "AAA7": (0.0, 0.0, 0.0),
+    "AAA7": (0.889, 2.6924, 1.524),    # mur de metal
 }
 
 filename = "../logs/positions.csv"
@@ -87,8 +87,12 @@ def tag_pos(ranges, anchors):
     dists = np.array([ranges[k] for k in keys])
 
     if len(dists) == 2:
-        c = np.linalg.norm(anchor_coords[1] - anchor_coords[0])
-        return tag_pos_2_anchors(dists[0], dists[1], c)
+        sorted_pairs = sorted(zip(anchor_coords, dists), key=lambda p: p[0][0])
+        left_anchor, left_dist = sorted_pairs[0]
+        right_anchor, right_dist = sorted_pairs[1]
+
+        c = np.linalg.norm(right_anchor - left_anchor)
+        return tag_pos_2_anchors(right_dist, left_dist, c)
 
     def error(pos):
         est = np.sqrt(((anchor_coords - pos) ** 2).sum(axis=1))
@@ -99,11 +103,10 @@ def tag_pos(ranges, anchors):
 
 
 def tag_pos_2_anchors(a, b, c):
-    print(a, b, c)
-    x=0
-    y=0
+    x=0.0
+    y=0.0
 
-    if (b != 0 and c != 0) :
+    if (a != 0 and b != 0 and c != 0) :
         cos_a = (b * b + c * c - a * a) / (2 * b * c)
         x = b * cos_a
         sin_a = (1 - cos_a * cos_a) ** 0.5
