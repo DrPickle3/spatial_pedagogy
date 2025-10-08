@@ -44,12 +44,12 @@ def main_loop(sock):
     conn, addr = sock.accept()
     print(f"***Connection accepted from {addr}***")
 
-    global buffer, t_ui, t_anchors, t_tag
+    global t_ui, t_anchors, t_tag
     buffer = ""  # reset buffer per connection
 
     try:
         while True:
-            list = read_data(conn)
+            list, buffer = read_data(conn, buffer)
             ranges = {}
 
             clean(t_anchors)
@@ -171,8 +171,7 @@ def connect_wifi():
     return sock
 
 
-def read_data(conn):
-    global buffer
+def read_data(conn, buffer):
     try:
         chunk = conn.recv(1024).decode("utf-8")
         buffer += chunk
@@ -198,14 +197,14 @@ def read_data(conn):
         uwb_data = json.loads(last_json)
         uwb_list = uwb_data.get("links", [])
 
-        return uwb_list
+        return uwb_list, buffer
 
     except json.JSONDecodeError as e:
         print("EXCEPTION!", e, last_json if 'last_json' in locals() else buffer)
-        return []
+        return [], buffer
     except Exception as e:
         print("EXCEPTION!", e)
-        return []
+        return [], buffer
 
 
 def clear_file():
