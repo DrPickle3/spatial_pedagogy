@@ -27,7 +27,7 @@ meter2pixel = 200
 anchors = {
     "AAA1": (1.5, 0.2, 0.2),
     "AAA2": (0.0, 0.0, 0.0),
-    "AAA3": (0.0, 0.0, 0.8),
+    "AAA3": (3.0, 0.0, 0.0),
     "AAA4": (0.6, 0.0, 0.8),
     "AAA5": (0.0, 0.0, 0.0),
     "AAA6": (0.0, 0.0, 0.0),
@@ -86,12 +86,30 @@ def tag_pos(ranges, anchors):
     anchor_coords = np.array([anchors[k] for k in keys])
     dists = np.array([ranges[k] for k in keys])
 
+    if len(dists) == 2:
+        c = np.linalg.norm(anchor_coords[1] - anchor_coords[0])
+        return tag_pos_2_anchors(dists[0], dists[1], c)
+
     def error(pos):
         est = np.sqrt(((anchor_coords - pos) ** 2).sum(axis=1))
         return np.sum((est - dists) ** 2)
 
     result = minimize(error, x0=np.mean(anchor_coords, axis=0))
     return float(result.x[0]), float(result.x[1])
+
+
+def tag_pos_2_anchors(a, b, c):
+    print(a, b, c)
+    x=0
+    y=0
+
+    if (b != 0 and c != 0) :
+        cos_a = (b * b + c * c - a * a) / (2 * b * c)
+        x = b * cos_a
+        sin_a = (1 - cos_a * cos_a) ** 0.5
+        y = b * sin_a
+
+    return round(x.real, 3), round(y.real, 3)
 
 
 def update_scatter():
