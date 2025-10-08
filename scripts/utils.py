@@ -13,6 +13,7 @@ TCP_IP = "0.0.0.0"
 TCP_PORT = 5000
 
 meter2pixel = 200
+true_pos = [0.8382, 2.6924]
 
 # anchors = {
 #     "AAA1": (0.0, 2.4892, 1.1176),#        sur ordi
@@ -24,14 +25,24 @@ meter2pixel = 200
 #     "AAA7": (2.9972, 2.7432, 1.8796),# garde-robe
 # }
 
+# anchors = {
+#     "AAA1": (0.0, 0.0, 0.0),
+#     "AAA2": (0.0, 0.0, 1.4986),        # bureau metal
+#     "AAA3": (3.175, 0.0, 0.7366),      # coin bureau fenetre
+#     "AAA4": (3.175, 1.4478, 0.7366),   # a cote de lordi
+#     "AAA5": (0.0, 0.0, 0.0),
+#     "AAA6": (0.0, 0.0, 0.0),
+#     "AAA7": (0.889, 2.6924, 1.524),    # mur de metal
+# }
+
 anchors = {
     "AAA1": (0.0, 0.0, 0.0),
-    "AAA2": (0.0, 0.0, 1.4986),        # bureau metal
-    "AAA3": (3.175, 0.0, 0.7366),      # coin bureau fenetre
-    "AAA4": (3.175, 1.4478, 0.7366),   # a cote de lordi
+    "AAA2": (0.0, 0.0, 1.4986),
+    "AAA3": (0.0, 0.0, 0.7366),
+    "AAA4": (1.0668, 0.0, 0.7366),
     "AAA5": (0.0, 0.0, 0.0),
     "AAA6": (0.0, 0.0, 0.0),
-    "AAA7": (0.889, 2.6924, 1.524),    # mur de metal
+    "AAA7": (0.0, 0.0, 1.524),
 }
 
 filename = "../logs/positions.csv"
@@ -39,7 +50,56 @@ filename = "../logs/positions.csv"
 positions = []
 
 
-def main_loop(sock):
+def update_scatter(real_pos=None):
+    if not positions:
+        return
+
+    plt.clf()
+
+    xs = np.array([p[0] for p in positions])
+    ys = np.array([p[1] for p in positions])
+
+    # --- 2D histogram (density grid) ---
+    counts, xedges, yedges, im = plt.hist2d(xs, ys, bins=30, range=[[0, 3], [0, 3]], cmap='Blues', alpha=0.7)
+
+    # --- Add scatter of points ---
+    plt.scatter(xs, ys, c="red", s=10, alpha=0.6, label="Mesures individuelles")
+
+    # --- Compute and show centroid (mode-like precision center) ---
+    centroid_x, centroid_y = np.mean(xs), np.mean(ys)
+    plt.scatter(centroid_x, centroid_y, c="orange", s=80, marker="x", label=f"Centre ≈ ({centroid_x:.2f}, {centroid_y:.2f})")
+
+    # Plot anchors in red with a different marker
+    anchor_xs = [coord[0] for coord in anchors.values()]
+    anchor_ys = [coord[1] for coord in anchors.values()]
+    plt.scatter(anchor_xs, anchor_ys, c="purple", s=80, marker="X", label="Anchors")
+
+    # --- Add real position reference, if provided ---
+    if real_pos is not None:
+        plt.scatter(real_pos[0], real_pos[1], c="green", s=100, marker="*", label=f"Position réelle ({real_pos[0]:.2f}, {real_pos[1]:.2f})")
+
+    # --- Formatting ---
+    plt.gca().invert_yaxis()
+    plt.xlabel("X (m)")
+    plt.ylabel("Y (m)")
+    plt.title("Carte de précision 2D des mesures")
+    plt.colorbar(im, label="Nombre de mesures")
+    plt.xlim(0, 3)
+    plt.ylim(0, 3)
+    plt.legend()
+    plt.grid(True, linestyle=":")
+    plt.pause(0.01)
+
+    return plt
+
+
+def on_exit(scatter_filename):
+    if scatter_filename:
+        update_scatter(true_pos).savefig(scatter_filename)
+    plt.close('all')
+
+
+def main_loop(sock, scatter_filename = ""):
     print(f"***Waiting for connection on port {TCP_PORT}***")
     conn, addr = sock.accept()
     print(f"***Connection accepted from {addr}***")
@@ -73,13 +133,16 @@ def main_loop(sock):
 
                 clean(t_tag)
                 draw_uwb_tag(x, y, "TAG", t_tag)
-                update_scatter()
+                update_scatter(true_pos)
 
             time.sleep(0.1)
         turtle.mainloop()
 
     except (ConnectionResetError, BrokenPipeError):
         print(f"***Connection lost from {addr}, waiting for new device...***")
+    except KeyboardInterrupt:
+        on_exit(scatter_filename)
+        raise KeyboardInterrupt
 
 
 def tag_pos(ranges, anchors):
@@ -114,37 +177,6 @@ def tag_pos_2_anchors(a, b, c):
         y = b * sin_a
 
     return round(x.real, 3), round(y.real, 3)
-
-
-def update_scatter():
-    if not positions:
-        return
-    plt.clf()
-    
-    # Plot tag positions
-    xs, ys = zip(*positions)
-    plt.scatter(xs, ys, c="blue", s=20, alpha=0.6, label="Tag positions")
-
-    # Plot anchors in red with a different marker
-    anchor_xs = [coord[0] for coord in anchors.values()]
-    anchor_ys = [coord[1] for coord in anchors.values()]
-    plt.scatter(anchor_xs, anchor_ys, c="red", s=80, marker="X", label="Anchors")
-
-    # Set plot limits with margin
-    margin = 0.5
-    xmin, xmax = min(anchor_xs) - margin, max(anchor_xs) + margin
-    ymin, ymax = min(anchor_ys) - margin, max(anchor_ys) + margin
-    plt.xlim(xmin, xmax)
-    plt.ylim(ymin, ymax)
-
-    plt.gca().invert_yaxis()
-
-    plt.xlabel("X (m)")
-    plt.ylabel("Y (m)")
-    plt.title("Nuage de points 2D - Précision de localisation")
-    plt.legend()
-    plt.grid(True)
-    plt.pause(0.1)
 
 
 def connect_wifi():
