@@ -25,7 +25,7 @@ meter2pixel = 200
 # }
 
 anchors = {
-    "AAA1": (1.5, 0.2, 0.0),
+    "AAA1": (0.0, 0.0, 0.0),
     "AAA2": (0.0, 0.0, 1.4986),        # bureau metal
     "AAA3": (3.175, 0.0, 0.7366),      # coin bureau fenetre
     "AAA4": (3.175, 1.4478, 0.7366),   # a cote de lordi
@@ -73,6 +73,7 @@ def main_loop(sock):
 
                 clean(t_tag)
                 draw_uwb_tag(x, y, "TAG", t_tag)
+                update_scatter()
 
             time.sleep(0.1)
         turtle.mainloop()
@@ -99,7 +100,7 @@ def tag_pos(ranges, anchors):
         return np.sum((est - dists) ** 2)
 
     result = minimize(error, x0=np.mean(anchor_coords, axis=0))
-    return float(result.x[0]), float(result.x[1])
+    return round(float(result.x[0]), 3), round(float(result.x[1]),3)
 
 
 def tag_pos_2_anchors(a, b, c):
