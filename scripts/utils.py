@@ -12,7 +12,9 @@ from zeroconf import ServiceInfo, Zeroconf
 TCP_IP = "0.0.0.0"
 TCP_PORT = 5000
 
+bin_size = 0.3  # Taille des cases de l'hisogramme dans matplotlib en metres
 meter2pixel = 200
+true_pos = None
 
 # anchors = {
 #     "AAA1": (0.0, 2.4892, 1.1176),#        sur ordi
@@ -24,14 +26,24 @@ meter2pixel = 200
 #     "AAA7": (2.9972, 2.7432, 1.8796),# garde-robe
 # }
 
+# anchors = {
+#     "AAA1": (0.0, 0.0, 0.0),
+#     "AAA2": (0.0, 0.0, 1.4986),        # bureau metal
+#     "AAA3": (3.175, 0.0, 0.7366),      # coin bureau fenetre
+#     "AAA4": (3.175, 1.4478, 0.7366),   # a cote de lordi
+#     "AAA5": (0.0, 0.0, 0.0),
+#     "AAA6": (0.0, 0.0, 0.0),
+#     "AAA7": (0.889, 2.6924, 1.524),    # mur de metal
+# }
+
 anchors = {
     "AAA1": (0.0, 0.0, 0.0),
-    "AAA2": (0.0, 0.0, 1.4986),        # bureau metal
-    "AAA3": (3.175, 0.0, 0.7366),      # coin bureau fenetre
-    "AAA4": (3.175, 1.4478, 0.7366),   # a cote de lordi
+    "AAA2": (0.0, 0.0, 0.0),
+    "AAA3": (0.0, 0.0, 0.0),
+    "AAA4": (0.0, 0.0, 0.0),
     "AAA5": (0.0, 0.0, 0.0),
     "AAA6": (0.0, 0.0, 0.0),
-    "AAA7": (0.889, 2.6924, 1.524),    # mur de metal
+    "AAA7": (0.0, 0.0, 0.0),
 }
 
 filename = "../logs/positions.csv"
@@ -39,17 +51,91 @@ filename = "../logs/positions.csv"
 positions = []
 
 
-def main_loop(sock):
+def update_scatter(real_pos=None):
+    if not positions:
+        return
+
+    plt.clf()
+
+    xs = np.array([p[0] for p in positions])
+    ys = np.array([p[1] for p in positions])
+
+    anchor_xs = [coord[0] for coord in anchors.values()]
+    anchor_ys = [coord[1] for coord in anchors.values()]
+
+    all_x = np.concatenate([xs, anchor_xs])
+    all_y = np.concatenate([ys, anchor_ys])
+
+    # --- Compute dynamic limits with padding ---
+    padding = 1  # meter
+    x_min, x_max = all_x.min() - padding, all_x.max() + padding
+    y_min, y_max = all_y.min() - padding, all_y.max() + padding
+
+    x_bins = int(np.ceil((x_max - x_min) / bin_size))
+    y_bins = int(np.ceil((y_max - y_min) / bin_size))
+
+    # --- 2D histogram (density grid) ---
+    counts, xedges, yedges, im = plt.hist2d(
+        xs, ys,
+        bins=[x_bins, y_bins],
+        range=[[x_min, x_max],
+        [y_min, y_max]],
+        cmap='Blues',
+        alpha=0.7
+    )
+
+    # --- Add scatter of points ---
+    plt.scatter(xs, ys, c="red", s=10, alpha=0.6, label="Mesures individuelles")
+
+    # --- Compute and show centroid (mode-like precision center) ---
+    centroid_x, centroid_y = np.mean(xs), np.mean(ys)
+    plt.scatter(
+        centroid_x, centroid_y, c="orange", s=80, marker="x",
+        label=f"Centre ≈ ({centroid_x:.2f}, {centroid_y:.2f})"
+    )
+
+    # Plot anchors in red with a different marker
+    plt.scatter(anchor_xs, anchor_ys, c="purple", s=80, marker="X", label="Anchors")
+
+    # --- Add real position reference, if provided ---
+    if real_pos is not None:
+        plt.scatter(
+            real_pos[0], real_pos[1], c="green", s=100, marker="*",
+            label=f"Position réelle ({real_pos[0]:.2f}, {real_pos[1]:.2f})"
+        )
+
+    # --- Formatting ---
+    plt.xlabel("X (m)")
+    plt.ylabel("Y (m)")
+    plt.title("Carte de précision 2D des mesures")
+    plt.colorbar(im, label="Nombre de mesures")
+    plt.xlim(x_min, x_max)
+    plt.ylim(y_min, y_max)
+    plt.gca().invert_yaxis()
+    plt.legend()
+    plt.grid(True, linestyle=":")
+    plt.pause(0.01)
+
+    return plt
+
+
+def on_exit(scatter_filename):
+    if scatter_filename:
+        update_scatter(true_pos).savefig(scatter_filename)
+    plt.close('all')
+
+
+def main_loop(sock, scatter_filename = ""):
     print(f"***Waiting for connection on port {TCP_PORT}***")
     conn, addr = sock.accept()
     print(f"***Connection accepted from {addr}***")
 
-    global buffer, t_ui, t_anchors, t_tag
+    global t_ui, t_anchors, t_tag
     buffer = ""  # reset buffer per connection
 
     try:
         while True:
-            list = read_data(conn)
+            list, buffer = read_data(conn, buffer)
             ranges = {}
 
             clean(t_anchors)
@@ -73,13 +159,16 @@ def main_loop(sock):
 
                 clean(t_tag)
                 draw_uwb_tag(x, y, "TAG", t_tag)
-                update_scatter()
+                update_scatter(true_pos)
 
             time.sleep(0.1)
         turtle.mainloop()
 
     except (ConnectionResetError, BrokenPipeError):
         print(f"***Connection lost from {addr}, waiting for new device...***")
+    except KeyboardInterrupt:
+        on_exit(scatter_filename)
+        raise KeyboardInterrupt
 
 
 def tag_pos(ranges, anchors):
@@ -116,37 +205,6 @@ def tag_pos_2_anchors(a, b, c):
     return round(x.real, 3), round(y.real, 3)
 
 
-def update_scatter():
-    if not positions:
-        return
-    plt.clf()
-    
-    # Plot tag positions
-    xs, ys = zip(*positions)
-    plt.scatter(xs, ys, c="blue", s=20, alpha=0.6, label="Tag positions")
-
-    # Plot anchors in red with a different marker
-    anchor_xs = [coord[0] for coord in anchors.values()]
-    anchor_ys = [coord[1] for coord in anchors.values()]
-    plt.scatter(anchor_xs, anchor_ys, c="red", s=80, marker="X", label="Anchors")
-
-    # Set plot limits with margin
-    margin = 0.5
-    xmin, xmax = min(anchor_xs) - margin, max(anchor_xs) + margin
-    ymin, ymax = min(anchor_ys) - margin, max(anchor_ys) + margin
-    plt.xlim(xmin, xmax)
-    plt.ylim(ymin, ymax)
-
-    plt.gca().invert_yaxis()
-
-    plt.xlabel("X (m)")
-    plt.ylabel("Y (m)")
-    plt.title("Nuage de points 2D - Précision de localisation")
-    plt.legend()
-    plt.grid(True)
-    plt.pause(0.1)
-
-
 def connect_wifi():
 
     hostname = socket.gethostname()
@@ -171,8 +229,7 @@ def connect_wifi():
     return sock
 
 
-def read_data(conn):
-    global buffer
+def read_data(conn, buffer):
     try:
         chunk = conn.recv(1024).decode("utf-8")
         buffer += chunk
@@ -198,14 +255,14 @@ def read_data(conn):
         uwb_data = json.loads(last_json)
         uwb_list = uwb_data.get("links", [])
 
-        return uwb_list
+        return uwb_list, buffer
 
     except json.JSONDecodeError as e:
         print("EXCEPTION!", e, last_json if 'last_json' in locals() else buffer)
-        return []
+        return [], buffer
     except Exception as e:
         print("EXCEPTION!", e)
-        return []
+        return [], buffer
 
 
 def clear_file():
