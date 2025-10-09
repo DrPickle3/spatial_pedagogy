@@ -12,8 +12,9 @@ from zeroconf import ServiceInfo, Zeroconf
 TCP_IP = "0.0.0.0"
 TCP_PORT = 5000
 
+bin_size = 0.3  # Taille des cases de l'hisogramme dans matplotlib en metres
 meter2pixel = 200
-true_pos = [0.8382, 2.6924]
+true_pos = None
 
 # anchors = {
 #     "AAA1": (0.0, 2.4892, 1.1176),#        sur ordi
@@ -37,12 +38,12 @@ true_pos = [0.8382, 2.6924]
 
 anchors = {
     "AAA1": (0.0, 0.0, 0.0),
-    "AAA2": (0.0, 0.0, 1.4986),
-    "AAA3": (0.0, 0.0, 0.7366),
-    "AAA4": (1.0668, 0.0, 0.7366),
+    "AAA2": (0.0, 0.0, 0.0),
+    "AAA3": (0.0, 0.0, 0.0),
+    "AAA4": (0.0, 0.0, 0.0),
     "AAA5": (0.0, 0.0, 0.0),
     "AAA6": (0.0, 0.0, 0.0),
-    "AAA7": (0.0, 0.0, 1.524),
+    "AAA7": (0.0, 0.0, 0.0),
 }
 
 filename = "../logs/positions.csv"
@@ -59,33 +60,58 @@ def update_scatter(real_pos=None):
     xs = np.array([p[0] for p in positions])
     ys = np.array([p[1] for p in positions])
 
+    anchor_xs = [coord[0] for coord in anchors.values()]
+    anchor_ys = [coord[1] for coord in anchors.values()]
+
+    all_x = np.concatenate([xs, anchor_xs])
+    all_y = np.concatenate([ys, anchor_ys])
+
+    # --- Compute dynamic limits with padding ---
+    padding = 1  # meter
+    x_min, x_max = all_x.min() - padding, all_x.max() + padding
+    y_min, y_max = all_y.min() - padding, all_y.max() + padding
+
+    x_bins = int(np.ceil((x_max - x_min) / bin_size))
+    y_bins = int(np.ceil((y_max - y_min) / bin_size))
+
     # --- 2D histogram (density grid) ---
-    counts, xedges, yedges, im = plt.hist2d(xs, ys, bins=30, range=[[0, 3], [0, 3]], cmap='Blues', alpha=0.7)
+    counts, xedges, yedges, im = plt.hist2d(
+        xs, ys,
+        bins=[x_bins, y_bins],
+        range=[[x_min, x_max],
+        [y_min, y_max]],
+        cmap='Blues',
+        alpha=0.7
+    )
 
     # --- Add scatter of points ---
     plt.scatter(xs, ys, c="red", s=10, alpha=0.6, label="Mesures individuelles")
 
     # --- Compute and show centroid (mode-like precision center) ---
     centroid_x, centroid_y = np.mean(xs), np.mean(ys)
-    plt.scatter(centroid_x, centroid_y, c="orange", s=80, marker="x", label=f"Centre ≈ ({centroid_x:.2f}, {centroid_y:.2f})")
+    plt.scatter(
+        centroid_x, centroid_y, c="orange", s=80, marker="x",
+        label=f"Centre ≈ ({centroid_x:.2f}, {centroid_y:.2f})"
+    )
 
     # Plot anchors in red with a different marker
-    anchor_xs = [coord[0] for coord in anchors.values()]
-    anchor_ys = [coord[1] for coord in anchors.values()]
     plt.scatter(anchor_xs, anchor_ys, c="purple", s=80, marker="X", label="Anchors")
 
     # --- Add real position reference, if provided ---
     if real_pos is not None:
-        plt.scatter(real_pos[0], real_pos[1], c="green", s=100, marker="*", label=f"Position réelle ({real_pos[0]:.2f}, {real_pos[1]:.2f})")
+        plt.scatter(
+            real_pos[0], real_pos[1], c="green", s=100, marker="*",
+            label=f"Position réelle ({real_pos[0]:.2f}, {real_pos[1]:.2f})"
+        )
 
     # --- Formatting ---
-    plt.gca().invert_yaxis()
     plt.xlabel("X (m)")
     plt.ylabel("Y (m)")
     plt.title("Carte de précision 2D des mesures")
     plt.colorbar(im, label="Nombre de mesures")
-    plt.xlim(0, 3)
-    plt.ylim(0, 3)
+    plt.xlim(x_min, x_max)
+    plt.ylim(y_min, y_max)
+    plt.gca().invert_yaxis()
     plt.legend()
     plt.grid(True, linestyle=":")
     plt.pause(0.01)
