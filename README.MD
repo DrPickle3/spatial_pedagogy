@@ -1,14 +1,14 @@
-# spatial pedagogy
+# Spatial Pedagogy
 
-## terminal commands
+## Terminal commands
 
 
-### to build the executable
+### To build the executable
 ```bash
 pio run
 ```
 
-### to upload it in the esp32
+### To upload it in the esp32
 ```bash
 pio run --target upload
 ```
@@ -18,7 +18,7 @@ pio run --target upload
 In the DW1000 original library, it does not support having a 5th anchor connected to a tag.
 We have to manually change the library code to adapt it to our case. We need to modify 2 different files :
 
-1. DW1000/src/DW1000.cpp
+### DW1000/src/DW1000.cpp
     At the line 172, there is the line 
 
 ```cpp
@@ -33,7 +33,7 @@ in the begin function and we have to put
 
 instead.
 
-2. DW1000/src/DW1000Ranging.cpp
+### DW1000/src/DW1000Ranging.cpp
 
 Add a check if we can add the new device in the array before doing it. (line 243)
 
