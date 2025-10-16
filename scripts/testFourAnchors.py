@@ -7,8 +7,11 @@ def main():
     utils.screen_init()
     utils.clear_file()
 
-    while True:
-        utils.main_loop(sock)
+    try:
+        while True:
+            utils.main_loop(sock)
+    except KeyboardInterrupt:
+        pass
 
 
 if __name__ == '__main__':
