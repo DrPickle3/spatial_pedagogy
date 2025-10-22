@@ -1,4 +1,5 @@
 import csv
+import datetime
 import json
 import matplotlib.pyplot as plt
 import numpy as np
@@ -42,7 +43,7 @@ anchors = {
     "AAA3": (0.0, 0.0, 0.0),
     "AAA4": (0.0, 0.0, 0.0),
     "AAA5": (0.0, 0.0, 0.0),
-    "AAA6": (0.0, 0.0, 0.0),
+    "AAA6": (1.0, 0.23, 0.0),
     "AAA7": (0.0, 0.0, 0.0),
 }
 
@@ -130,39 +131,44 @@ def main_loop(sock, scatter_filename = ""):
     conn, addr = sock.accept()
     print(f"***Connection accepted from {addr}***")
 
-    global t_ui, t_anchors, t_tag
+    # global t_ui, t_anchors, t_tag
     buffer = ""  # reset buffer per connection
 
     try:
         while True:
-            list, buffer = read_data(conn, buffer)
+            anchors_list, buffer = read_data(conn, buffer)
             ranges = {}
 
-            clean(t_anchors)
+            # clean(t_anchors)
 
-            for one in list:
-                if one["A"] in anchors:
-                    ranges[one["A"]] = float(one["R"])
-                    ax, ay, az = anchors[one["A"]]
-                    pos_x = -250 + ax * meter2pixel
-                    pos_y = 150 - ay * meter2pixel
-                    draw_uwb_anchor(pos_x, pos_y, one["A"], t_anchors)
+            for anchor in anchors_list:
+                if anchor["A"] in anchors:
+                    anchor_range = float(anchor["R"])
+                    if anchor_range > 0.0 and anchor_range < 10.0:
+                        ranges[anchor["A"]] = anchor_range
+                    # ax, ay, az = anchors[anchor["A"]]
+                    # pos_x = -250 + ax * meter2pixel
+                    # pos_y = 150 - ay * meter2pixel
+                    # draw_uwb_anchor(pos_x, pos_y, anchor["A"], t_anchors)
+
+            anchor_ids = sorted(ranges.keys())[:4]
+            distances = [ranges[a] for a in anchor_ids]
+
+            while len(anchor_ids) < 4:
+                anchor_ids.append(None)
+            while len(distances) < 4:
+                distances.append(None)
 
             if len(ranges) >= 2:
                 x, y = tag_pos(ranges, anchors)
                 with open(filename, "a", newline="") as file:
                     writer = csv.writer(file)
-                    writer.writerow([x, y])
-
-                if x > 0.1 and y > 0.1:
-                    positions.append((x, y))
-
-                clean(t_tag)
-                draw_uwb_tag(x, y, "TAG", t_tag)
-                update_scatter(true_pos)
-
-            time.sleep(0.1)
-        turtle.mainloop()
+                    writer.writerow([
+                        len(ranges),
+                        *anchor_ids,
+                        *distances,
+                        x, y, datetime.datetime.now()
+                    ])
 
     except (ConnectionResetError, BrokenPipeError):
         print(f"***Connection lost from {addr}, waiting for new device...***")
@@ -268,7 +274,10 @@ def read_data(conn, buffer):
 def clear_file():
     with open(filename, "w", newline="") as file:
         writer = csv.writer(file)
-        writer.writerow(["x", "y"])
+        writer.writerow([
+            "Nb Anchors", "id_1", "id_2", "id_3", "id_4", "d1", "d2", "d3",
+            "d4", "pos_x", "pos_y", "Timestamp"            
+        ])
 
 
 def screen_init():

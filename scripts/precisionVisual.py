@@ -4,7 +4,7 @@ import utils
 def main():
 
     sock = utils.connect_wifi()
-    utils.screen_init()
+    # utils.screen_init()
     utils.clear_file()
 
     try:
