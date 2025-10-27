@@ -6,7 +6,6 @@ import numpy as np
 import re
 from scipy.optimize import minimize
 import socket
-import time
 import turtle
 from zeroconf import ServiceInfo, Zeroconf
 
@@ -39,11 +38,11 @@ true_pos = None
 
 anchors = {
     "AAA1": (0.0, 0.0, 0.0),
-    "AAA2": (0.0, 0.0, 0.0),
+    "AAA2": (0.0, 0.0, 1.0),
     "AAA3": (0.0, 0.0, 0.0),
     "AAA4": (0.0, 0.0, 0.0),
     "AAA5": (0.0, 0.0, 0.0),
-    "AAA6": (1.0, 0.23, 0.0),
+    "AAA6": (2.921, 0.0, 1.0),
     "AAA7": (0.0, 0.0, 0.0),
 }
 
@@ -126,12 +125,14 @@ def on_exit(scatter_filename):
     plt.close('all')
 
 
-def main_loop(sock, scatter_filename = ""):
+def main_loop(sock, scatter_filename = "", display = False):
     print(f"***Waiting for connection on port {TCP_PORT}***")
     conn, addr = sock.accept()
+    conn.settimeout(5.0)
     print(f"***Connection accepted from {addr}***")
 
-    # global t_ui, t_anchors, t_tag
+    if display:
+        global t_ui, t_anchors, t_tag
     buffer = ""  # reset buffer per connection
 
     try:
@@ -139,17 +140,19 @@ def main_loop(sock, scatter_filename = ""):
             anchors_list, buffer = read_data(conn, buffer)
             ranges = {}
 
-            # clean(t_anchors)
+            if display:
+                clean(t_anchors)
 
             for anchor in anchors_list:
                 if anchor["A"] in anchors:
                     anchor_range = float(anchor["R"])
                     if anchor_range > 0.0 and anchor_range < 10.0:
                         ranges[anchor["A"]] = anchor_range
-                    # ax, ay, az = anchors[anchor["A"]]
-                    # pos_x = -250 + ax * meter2pixel
-                    # pos_y = 150 - ay * meter2pixel
-                    # draw_uwb_anchor(pos_x, pos_y, anchor["A"], t_anchors)
+                    if display:
+                        ax, ay, az = anchors[anchor["A"]]
+                        pos_x = -250 + ax * meter2pixel
+                        pos_y = 150 - ay * meter2pixel
+                        draw_uwb_anchor(pos_x, pos_y, anchor["A"], t_anchors)
 
             anchor_ids = sorted(ranges.keys())[:4]
             distances = [ranges[a] for a in anchor_ids]
@@ -161,19 +164,31 @@ def main_loop(sock, scatter_filename = ""):
 
             if len(ranges) >= 2:
                 x, y = tag_pos(ranges, anchors)
-                with open(filename, "a", newline="") as file:
-                    writer = csv.writer(file)
-                    writer.writerow([
-                        len(ranges),
-                        *anchor_ids,
-                        *distances,
-                        x, y, datetime.datetime.now()
-                    ])
+
+                if x != -1 and y != -1:
+
+                    with open(filename, "a", newline="") as file:
+                        writer = csv.writer(file)
+                        writer.writerow([
+                            len(ranges),
+                            *anchor_ids,
+                            *distances,
+                            x, y, datetime.datetime.now()
+                        ])
+                    if display:
+                        clean(t_tag)
+                        draw_uwb_tag(x, y, "TAG", t_tag)
 
     except (ConnectionResetError, BrokenPipeError):
         print(f"***Connection lost from {addr}, waiting for new device...***")
+        conn.close()
+        raise ConnectionResetError
+    except socket.timeout:
+        conn.close()
+        pass # to try again
     except KeyboardInterrupt:
         on_exit(scatter_filename)
+        conn.close()
         raise KeyboardInterrupt
 
 
@@ -204,6 +219,8 @@ def tag_pos_2_anchors(a, b, c):
 
     if (a != 0 and b != 0 and c != 0) :
         cos_a = (b * b + c * c - a * a) / (2 * b * c)
+        if cos_a * cos_a > 1:
+            return -1, -1
         x = b * cos_a
         sin_a = (1 - cos_a * cos_a) ** 0.5
         y = b * sin_a
@@ -266,6 +283,9 @@ def read_data(conn, buffer):
     except json.JSONDecodeError as e:
         print("EXCEPTION!", e, last_json if 'last_json' in locals() else buffer)
         return [], buffer
+    except socket.timeout:
+        print("Lost connection to the Tag")
+        raise socket.timeout
     except Exception as e:
         print("EXCEPTION!", e)
         return [], buffer
