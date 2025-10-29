@@ -19,10 +19,11 @@ def main():
     sock = utils.connect_wifi()
     args.display and utils.screen_init()
     utils.clear_file()
+    utils.load_anchors()
 
     try:
         while True:
-            utils.main_loop(sock, "../images/test.png", args.display)
+            utils.main_loop(sock, args.display)
     except KeyboardInterrupt:
         pass
 

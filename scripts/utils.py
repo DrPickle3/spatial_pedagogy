@@ -3,6 +3,7 @@ import datetime
 import json
 import matplotlib.pyplot as plt
 import numpy as np
+import os
 import re
 from scipy.optimize import minimize
 import socket
@@ -16,39 +17,20 @@ bin_size = 0.3  # Taille des cases de l'hisogramme dans matplotlib en metres
 meter2pixel = 200
 true_pos = None
 
-# anchors = {
-#     "AAA1": (0.0, 2.4892, 1.1176),#        sur ordi
-#     "AAA2": (2.9972, 0.5588, 2.032),#  porte chambre
-#     "AAA3": (0.0, 0.0, 0.0),
-#     "AAA4": (0.0, 0.0, 1.1176),#       coin du lit
-#     "AAA5": (0.0, 0.0, 0.0),
-#     "AAA6": (0.0, 0.0, 0.0),
-#     "AAA7": (2.9972, 2.7432, 1.8796),# garde-robe
-# }
-
-# anchors = {
-#     "AAA1": (0.0, 0.0, 0.0),
-#     "AAA2": (0.0, 0.0, 1.4986),        # bureau metal
-#     "AAA3": (3.175, 0.0, 0.7366),      # coin bureau fenetre
-#     "AAA4": (3.175, 1.4478, 0.7366),   # a cote de lordi
-#     "AAA5": (0.0, 0.0, 0.0),
-#     "AAA6": (0.0, 0.0, 0.0),
-#     "AAA7": (0.889, 2.6924, 1.524),    # mur de metal
-# }
-
-anchors = {
-    "AAA1": (0.0, 0.0, 0.0),
-    "AAA2": (0.0, 0.0, 1.0),
-    "AAA3": (0.0, 0.0, 0.0),
-    "AAA4": (0.0, 0.0, 0.0),
-    "AAA5": (0.0, 0.0, 0.0),
-    "AAA6": (2.921, 0.0, 1.0),
-    "AAA7": (0.0, 0.0, 0.0),
-}
-
 filename = "../logs/positions.csv"
 
 positions = []
+
+def load_anchors(config_path="../config.json"):
+    """Load anchors from a JSON configuration file."""
+    if not os.path.exists(config_path):
+        raise FileNotFoundError(f"Config file not found: {config_path}")
+    with open(config_path, "r") as f:
+        data = json.load(f)
+
+    global anchors
+    anchors = {k: tuple(v) for k, v in data["anchors"].items()}
+    return anchors
 
 
 def update_scatter(real_pos=None):
@@ -125,7 +107,7 @@ def on_exit(scatter_filename):
     plt.close('all')
 
 
-def main_loop(sock, scatter_filename = "", display = False):
+def main_loop(sock, display = False, scatter_filename = ""):
     print(f"***Waiting for connection on port {TCP_PORT}***")
     conn, addr = sock.accept()
     conn.settimeout(5.0)
