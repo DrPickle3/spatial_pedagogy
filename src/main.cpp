@@ -89,7 +89,7 @@ Adafruit_SSD1306 display(128, 64, &Wire, -1);
 
 #ifndef PUSHING_ANCHOR_CODE
 
-const char *ssid = "CamPhone"; // works even on eduroam
+const char *ssid = WIFI_NAME; // works even on eduroam
 WiFiClient client;
 String all_json = "";
 
@@ -468,7 +468,7 @@ void setup()
   WiFi.disconnect(true);
   WiFi.mode(WIFI_STA);
 
-  WiFi.begin(ssid, EDUROAM_PASS);
+  WiFi.begin(ssid, WIFI_PASS);
 
   Serial.println("Connecting to WiFi...");
   while (WiFi.status() != WL_CONNECTED)

@@ -40,3 +40,8 @@ Add a check if we can add the new device in the array before doing it. (line 243
 ```cpp
 	if(_networkDevicesNumber + 1 <= MAX_DEVICES && addDevice)
 ```
+
+## Phone details
+
+### PIN
+1545
