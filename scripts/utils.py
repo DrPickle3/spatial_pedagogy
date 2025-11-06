@@ -13,11 +13,11 @@ from zeroconf import ServiceInfo, Zeroconf
 TCP_IP = "0.0.0.0"
 TCP_PORT = 5000
 
-meter2pixel = 200
+meter2pixel = 200   # Ususally always fit in the window (real-time only)
 
 filename = "../logs/positions.csv"
 
-minimum_anchors_for_position = 4
+minimum_anchors_for_position = 4    # maximum precision
 
 
 def load_anchors(config_path="../config.json"):
