@@ -17,9 +17,11 @@ meter2pixel = 200
 
 filename = "../logs/positions.csv"
 
+minimum_anchors_for_position = 4
+
 
 def load_anchors(config_path="../config.json"):
-    """Load anchors from a JSON configuration file."""
+    """ Load anchors from a JSON configuration file. """
     if not os.path.exists(config_path):
         raise FileNotFoundError(f"Config file not found: {config_path}")
     with open(config_path, "r") as f:
@@ -31,10 +33,12 @@ def load_anchors(config_path="../config.json"):
 
 
 def on_exit():
+    """ Close all matplotlib plots on exit """
     plt.close('all')
 
 
 def main_loop(sock, display = False):
+    """ Main loop handling TCP data reception and visualization """
     print(f"***Waiting for connection on port {TCP_PORT}***")
     conn, addr = sock.accept()
     conn.settimeout(5.0)
@@ -71,7 +75,7 @@ def main_loop(sock, display = False):
             while len(distances) < 4:
                 distances.append(None)
 
-            if len(ranges) >= 2:
+            if len(ranges) >= minimum_anchors_for_position:
                 x, y = tag_pos(ranges, anchors)
 
                 if x != -1 and y != -1:
@@ -102,6 +106,7 @@ def main_loop(sock, display = False):
 
 
 def tag_pos(ranges, anchors):
+    """ Compute tag position based on distances to known anchors """
     keys = [k for k in ranges if k in anchors]
     anchor_coords = np.array([anchors[k] for k in keys])
     dists = np.array([ranges[k] for k in keys])
@@ -123,6 +128,7 @@ def tag_pos(ranges, anchors):
 
 
 def tag_pos_2_anchors(a, b, c):
+    """ Estimate 2D tag position using only 2 anchors """
     x=0.0
     y=0.0
 
@@ -138,6 +144,7 @@ def tag_pos_2_anchors(a, b, c):
 
 
 def connect_wifi():
+    """ Setup a Wi-Fi TCP server using Zeroconf for discovery """
 
     hostname = socket.gethostname()
     local_ip = socket.gethostbyname(hostname)
@@ -162,6 +169,7 @@ def connect_wifi():
 
 
 def read_data(conn, buffer):
+    """ Read and parse incoming JSON UWB data from the socket """
     try:
         chunk = conn.recv(1024).decode("utf-8")
         buffer += chunk
@@ -201,6 +209,7 @@ def read_data(conn, buffer):
 
 
 def clear_file():
+    """ Clear and reinitialize the CSV output file """
     with open(filename, "w", newline="") as file:
         writer = csv.writer(file)
         writer.writerow([
@@ -210,6 +219,7 @@ def clear_file():
 
 
 def screen_init():
+    """ Initialize the turtle-based UI """
     screen = turtle.Screen()
     screen.setup(1200, 800)
     screen.tracer(True)
@@ -225,11 +235,13 @@ def screen_init():
 
 
 def turtle_init(t=turtle):
+    """ Initialize a turtle object """
     t.hideturtle()
     t.speed(0)
 
 
 def fill_cycle(x, y, r, color="black", t=turtle):
+    """ Draw a filled circle on the screen """
     t.up()
     t.goto(x, y)
     t.down()
@@ -238,6 +250,7 @@ def fill_cycle(x, y, r, color="black", t=turtle):
 
 
 def write_txt(x, y, txt, color="black", t=turtle, f=('Arial', 12, 'normal')):
+    """ Write text at a given position """
 
     t.pencolor(color)
     t.up()
@@ -248,6 +261,7 @@ def write_txt(x, y, txt, color="black", t=turtle, f=('Arial', 12, 'normal')):
 
 
 def draw_rect(x, y, w, h, color="black", t=turtle):
+    """ Draw a rectangle """
     t.pencolor(color)
 
     t.up()
@@ -261,6 +275,7 @@ def draw_rect(x, y, w, h, color="black", t=turtle):
 
 
 def fill_rect(x, y, w, h, color=("black", "black"), t=turtle):
+    """ Fill a rectangle with color """
     t.begin_fill()
     draw_rect(x, y, w, h, color, t)
     t.end_fill()
@@ -268,16 +283,19 @@ def fill_rect(x, y, w, h, color=("black", "black"), t=turtle):
 
 
 def clean(t=turtle):
+    """ Clear a turtle layer """
     t.clear()
 
 
 def draw_ui(t):
+    """ Draw main UI elements """
     write_txt(-300, 250, "UWB Positon", "black",  t, f=('Arial', 32, 'normal'))
     fill_rect(-400, 200, 800, 40, "black", t)
     write_txt(-50, 205, "WALL", "yellow",  t, f=('Arial', 24, 'normal'))
 
 
 def draw_uwb_anchor(x, y, txt, t):
+    """ Draw a UWB anchor point """
     r = 20
     fill_cycle(x, y, r, "green", t)
     write_txt(x + r, y, txt,
@@ -285,6 +303,7 @@ def draw_uwb_anchor(x, y, txt, t):
 
 
 def draw_uwb_tag(x, y, txt, t):
+    """ Draw the tag position """
     pos_x = -250 + int(x * meter2pixel)
     pos_y = 150 - int(y * meter2pixel)
     r = 20
