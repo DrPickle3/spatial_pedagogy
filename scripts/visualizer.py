@@ -1,25 +1,64 @@
 import argparse
 import csv
-import numpy as np
+from datetime import datetime
+import subprocess
+
+import matplotlib.image as mpimg
 import matplotlib.pyplot as plt
 from matplotlib.patches import Ellipse
-from matplotlib.widgets import Slider, Button
+from matplotlib.widgets import RangeSlider, Button
+
+import numpy as np
+from scipy.ndimage import uniform_filter1d
+
 import utils
 
 
 def build_arg_parser():
-    """Build argument parser."""
+    """ Builds and returns the argument parser for CLI options. """
     p = argparse.ArgumentParser(
         description="Writing position of Tag with Anchors in CSV"
-    )    
+    )
+    p.add_argument('--stops', action='store_true',
+                   help='Prints the detected stops')
+    p.add_argument('--precision', action='store_true',
+                   help='Displays the precision of the entire log')
     p.add_argument('--trail', type=int, default=5,
                     help='Number of previous points to show (e.g. --trail 10)')
     p.add_argument('--filename', type=str, default="../logs/positions.csv",
                     help='CSV file we want to read from')
+    p.add_argument('--calibration', action='store_true',
+                   help='Calibrate a certain CSV and PNG for visualization')
     return p
 
 
-def smart_anchors(csv_filename, anchors):
+def get_positions(csv_filename, stop=False):
+    """ Reads x, y, and timestamp data from the CSV file. """
+    xs, ys, timestamps = [], [], []
+    with open(csv_filename, newline='') as file:
+        reader = csv.DictReader(file)
+        for row in reader:
+            try:
+                # Last columns are x, y, timestamp
+                x = float(row.get("pos_x"))
+                y = float(row.get("pos_y"))
+                if stop:
+                    t = datetime.strptime(row["Timestamp"], "%Y-%m-%d %H:%M:%S.%f")
+                    timestamps.append(t.timestamp())
+                else:                    
+                    t = row.get("Timestamp")
+                    timestamps.append(t)
+                xs.append(x)
+                ys.append(y)
+            except ValueError:
+                continue  # skip invalid rows
+
+    xs, ys = np.array(xs), np.array(ys)
+    return xs, ys, timestamps
+
+
+def smart_anchors(anchors, csv_filename):
+    """ Returns only the anchors that were used in the CSV file. """
     used_anchors = set()
     with open(csv_filename, newline='') as file:
         reader = csv.DictReader(file)
@@ -34,38 +73,31 @@ def smart_anchors(csv_filename, anchors):
     return {k: v for k, v in anchors.items() if k in used_anchors}
 
 
-def update_scatter_from_csv(csv_filename, anchors, trail_length):
+def update_scatter_from_csv(anchors, args):
+    """ Displays a dynamic trajectory plot of the tag positions. """
     # --- Load CSV data ---
-    xs, ys, timestamps = [], [], []
-    with open(csv_filename, newline='') as file:
-        reader = csv.DictReader(file)
-        for row in reader:
-            try:
-                # Last columns are x, y, timestamp
-                x = float(row.get("pos_x"))
-                y = float(row.get("pos_y"))
-                t = row.get("Timestamp")
-                xs.append(x)
-                ys.append(y)
-                timestamps.append(t)
-            except ValueError:
-                continue  # skip invalid rows
+    xs, ys, timestamps = get_positions(args.csv_filename)
 
-    xs, ys = np.array(xs), np.array(ys)
+    if args.calibration:
+        result = subprocess.run(["python", "../calibration/main.py", "--csv", args.csv_filename])
+        print(result.stdout)
 
-    mean_x, mean_y = np.mean(xs), np.mean(ys)
-    std_x, std_y = np.std(xs), np.std(ys)
-    var_x, var_y = np.var(xs), np.var(ys)
-    gaussian_circle = Ellipse(
-        (mean_x, mean_y),
-        width=4*std_x,  #4*std pour avoir environ 95.4% dans l'ellipse
-        height=4*std_y,
-        edgecolor='orange',
-        facecolor='none',
-        linestyle='--',
-        linewidth=1.5,
-        label=f"Incertitude (2σ) — VarX={var_x:.3f}, VarY={var_y:.3f}"
-    )
+    img = mpimg.imread('../calibration/data/brin_univers.png')
+
+    if args.precision_display:
+        mean_x, mean_y = np.mean(xs), np.mean(ys)
+        std_x, std_y = np.std(xs), np.std(ys)
+        var_x, var_y = np.var(xs), np.var(ys)
+        gaussian_circle = Ellipse(
+            (mean_x, mean_y),
+            width=4*std_x,  # 4*std gives ~95.4% coverage
+            height=4*std_y,
+            edgecolor='orange',
+            facecolor='none',
+            linestyle='--',
+            linewidth=1.5,
+            label=f"Incertitude (2σ) — VarX={var_x:.3f}, VarY={var_y:.3f}"
+        )
     
     anchor_xs = [coord[0] for coord in anchors.values()]
     anchor_ys = [coord[1] for coord in anchors.values()]
@@ -81,18 +113,31 @@ def update_scatter_from_csv(csv_filename, anchors, trail_length):
     fig, ax = plt.subplots()
     plt.subplots_adjust(bottom=0.25)
 
+    #Image
+    ax.imshow(img, extent=[0, 10, 0, 10], aspect='auto', origin='lower')
+
     # Anchors
     ax.scatter(anchor_xs, anchor_ys, c="purple", s=80, marker="X", label="Anchors")
 
-    #Gaussian
-    ax.add_patch(gaussian_circle)
+    #Stops
+    if args.stops:
+        useless_xs, useless_ys, useless_ts, stops_pos = detect_stops(args.csv_filename)
 
-    #Real point + Mean Comparison
-    ax.plot([2.3622], [1.905], 'go', markersize=6, label="Position réelle")
-    ax.plot([mean_x], [mean_y], 'yo', markersize=6, label="Position moyenne")
+        stop_xs = [stop["x"] for stop in stops_pos]
+        stop_ys = [stop["y"] for stop in stops_pos]
+
+        ax.scatter(stop_xs, stop_ys, c="red", s=60, marker="s", label="Stops")
+
+    # Gaussian
+    if args.precision_display:
+        ax.add_patch(gaussian_circle)
+
+        # Real point + Mean Comparison
+        ax.plot([2.3622], [1.905], 'go', markersize=6, label="Position réelle")
+        ax.plot([mean_x], [mean_y], 'yo', markersize=6, label="Position moyenne")
 
     # Dynamic point (moving tag)
-    point, = ax.plot([], [], 'ro', markersize=6, label="Position mesurée")
+    point, = ax.plot([], [], 'go', markersize=6, label="Position mesurée")
     trail_scatter = ax.scatter([], [], c='blue', s=30, label="Positions antérieures")
 
     # Labels, legend, etc.
@@ -103,53 +148,56 @@ def update_scatter_from_csv(csv_filename, anchors, trail_length):
     ax.invert_yaxis()
     ax.legend()
 
-    #grid lines
+    # Grid lines
     ax.set_xticks(np.arange(x_min, x_max + 1, 1))  # major ticks every 1 m
     ax.set_yticks(np.arange(y_min, y_max + 1, 1))
     ax.set_xticks(np.arange(x_min, x_max + 0.2, 0.2), minor=True)
     ax.set_yticks(np.arange(y_min, y_max + 0.2, 0.2), minor=True)
 
     # Draw grids
-    ax.grid(which='major', linestyle=':', color='gray', linewidth=1, alpha=0.7)
-    ax.grid(which='minor', linestyle=':', color='gray', linewidth=0.5, alpha=0.3)
+    ax.grid(which='major', linestyle=':', color='gray', linewidth=1.5, alpha=0.5)
+    ax.grid(which='minor', linestyle=':', color='gray', linewidth=1, alpha=0.3)
 
-    #title
+    # Title
     ax.set_title(f"Carte de trajectoire — Frame 1/{len(xs)}\n{timestamps[0]}")
 
     # --- Slider setup ---
     ax_slider = plt.axes([0.25, 0.1, 0.5, 0.03])
-    slider = Slider(ax_slider, 'Frame', 0, len(xs)-1, valinit=0, valfmt='%d')
+    slider = RangeSlider(ax_slider, 'Frame', 1, len(xs), valinit=(1, len(xs)), valfmt='%d')
 
-    # Place buttons slightly *below* the slider (no overlap)
-    ax_prev = plt.axes([0.15, 0.05, 0.05, 0.03])
-    ax_next = plt.axes([0.8, 0.05, 0.05, 0.03])
+    # Buttons for navigation
+    ax_prev = plt.axes([0.1, 0.1, 0.05, 0.03])
+    ax_next = plt.axes([0.9, 0.1, 0.05, 0.03])
     btn_prev = Button(ax_prev, "◀")
     btn_next = Button(ax_next, "▶")
 
     # --- Update function ---
     def update(val):
-        i = int(slider.val)
-
-        # Main red point
-        point.set_data([xs[i]], [ys[i]])
+        """ Updates plot when slider range changes. """
+        start_frame, end_frame = map(int, slider.val)
+        selected_x = xs[start_frame-1:end_frame]
+        selected_y = ys[start_frame-1:end_frame]
+        trail_scatter.set_offsets(np.c_[selected_x, selected_y])
+        
+        # Keep the red point at the end
+        point.set_data([xs[end_frame-1]], [ys[end_frame-1]])
 
         # Compute ghost trail points
-        start = max(0, i - trail_length)
-        trail_x = xs[start:i]
-        trail_y = ys[start:i]
+        start = max(0, end_frame - 1 - args.trail_length)
+        trail_x = xs[start:end_frame - 1]
+        trail_y = ys[start:end_frame - 1]
 
-        # Generate decreasing alpha values for fading effect
+        # Fade effect
         n = len(trail_x)
         if n > 0:
-            alphas = np.linspace(0.1, 0.8, n)  # older points are more transparent
+            alphas = np.linspace(0.1, 0.8, n)
             colors = [(0, 0, 1, a) for a in alphas]
             trail_scatter.set_offsets(np.c_[trail_x, trail_y][::-1])
             trail_scatter.set_facecolors(colors[::-1])
         else:
             trail_scatter.set_offsets(np.empty((0, 2)))
 
-        # Update title
-        ax.set_title(f"Carte de trajectoire — Frame {i+1}/{len(xs)}\n{timestamps[i]}")
+        ax.set_title(f"Carte de trajectoire — Frame {end_frame}/{len(xs)}\n{timestamps[end_frame - 1]}")
         fig.canvas.draw_idle()
 
     slider.on_changed(update)
@@ -159,15 +207,17 @@ def update_scatter_from_csv(csv_filename, anchors, trail_length):
 
     def next_frame(event):
         fig.canvas.release_mouse(slider.ax)
-        current = int(slider.val)
-        if current < len(xs) - 1:
-            slider.set_val(current + 1)
+        start_frame, end_frame = map(int, slider.val)
+        if end_frame < len(xs):
+            slider.set_val([start_frame, end_frame + 1])
 
     def prev_frame(event):
         fig.canvas.release_mouse(slider.ax)
-        current = int(slider.val)
-        if current > 0:
-            slider.set_val(current - 1)
+        start_frame, end_frame = map(int, slider.val)
+        if end_frame > start_frame:
+            slider.set_val([start_frame, end_frame - 1])
+        elif end_frame > 1:
+            slider.set_val([start_frame - 1, end_frame - 1])
 
     btn_next.on_clicked(next_frame)
     btn_prev.on_clicked(prev_frame)
@@ -175,16 +225,96 @@ def update_scatter_from_csv(csv_filename, anchors, trail_length):
     plt.show()
 
 
-def main():
+def detect_stops(csv_filename, speed_thresh=0.2, min_duration=1.0):
+    """ Detects stops based on movement speed threshold and duration. """
+    xs, ys, timestamps = get_positions(csv_filename, True)
 
+    dt = np.diff(timestamps)
+    dt[dt == 0] = 1e-6
+    vx = np.diff(xs) / dt
+    vy = np.diff(ys) / dt
+    speed = np.sqrt(vx**2 + vy**2)
+    speed = np.append(speed, speed[-1])  # align length with positions
+
+    speed_smooth = uniform_filter1d(speed, size=5)
+    low = speed_smooth < speed_thresh
+
+    stops = []
+    n = len(low)
+    i = 0
+    while i < n:
+        if not low[i]:
+            i += 1
+            continue
+        j = i
+        while j + 1 < n and low[j + 1]:
+            j += 1
+
+        duration = timestamps[j] - timestamps[i]
+        if duration >= min_duration:
+            stops.append({
+                "start_frame": i + 1,
+                "end_frame": j + 1,
+                "x": float(np.mean(xs[i:j+1])),
+                "y": float(np.mean(ys[i:j+1])),
+            })
+        i = j + 1
+
+    return xs, ys, timestamps, stops
+
+
+def show_summary_window(csv_filename):
+    """ Displays a static summary window with mean and stop stats. """
+
+    xs, ys, timestamps, stops = detect_stops(csv_filename)
+
+    fig, ax = plt.subplots(figsize=(6, 4))
+    ax.axis('off')
+    ax.set_title("Résumé des mesures", fontsize=14, pad=20, weight='bold')
+
+    # Compute stop durations (if provided)
+    durations = []
+    if stops:
+        for s in stops:
+            start, end = s["start_frame"], s["end_frame"]
+            durations.append(timestamps[end-1] - timestamps[start-1])
+
+    if durations:
+        mean_stop = np.mean(durations)
+        total_stops = len(durations)
+    else:
+        mean_stop = 0
+        total_stops = 0
+
+    # Compute total trajectory length
+    dist = np.sum(np.sqrt(np.diff(xs)**2 + np.diff(ys)**2))
+
+    text = (
+        f"**Statistiques**\n"
+        f"- Nombre total de points : {len(xs)}\n"
+        f"- Distance totale parcourue : {dist:.2f} m\n"
+        f"- Nombre d'arrêts : {total_stops}\n"
+        f"- Durée moyenne d'arrêt : {mean_stop:.2f} s"
+    )
+
+    ax.text(0.05, 0.95, text, va='top', ha='left', fontsize=11, family='monospace')
+    plt.tight_layout()
+    plt.show(block=False)
+
+
+def main():
+    """ Main entry point — parses args and launches visualization or stop detection. """
     parser = build_arg_parser()
     args = parser.parse_args()
 
     anchors = utils.load_anchors()
-    anchors = smart_anchors(args.filename, anchors)
+    anchors = smart_anchors(anchors, args.filename)
+
+    if (args.stops):
+        show_summary_window(args.filename)
 
     try:
-        update_scatter_from_csv(args.filename, anchors, args.trail)
+        update_scatter_from_csv(anchors, args)
     except KeyboardInterrupt:
         pass
 
