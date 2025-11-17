@@ -2,7 +2,6 @@
 
 ## Terminal commands
 
-
 ### To build the executable
 ```bash
 pio run
@@ -45,3 +44,8 @@ Add a check if we can add the new device in the array before doing it. (line 243
 
 ### PIN
 1545
+
+## TODO
+
+### Image
+The image is not perfectly alligned with the points... Which could be more accurate with stops before the experiment.
