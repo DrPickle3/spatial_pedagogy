@@ -6,6 +6,7 @@ import os
 import subprocess
 
 import matplotlib.image as mpimg
+import matplotlib.cm as cm
 import matplotlib.pyplot as plt
 from matplotlib.patches import Ellipse
 from matplotlib.widgets import RangeSlider, Button
@@ -15,12 +16,21 @@ from scipy.ndimage import uniform_filter1d
 
 import utils
 
+# Heatmap
+num_bins = 50
+
+# Amount of big
+major_cells = 10
+minor_div = 5
+
 
 def build_arg_parser():
     """ Builds and returns the argument parser for CLI options. """
     p = argparse.ArgumentParser(
         description="Writing position of Tag with Anchors in CSV"
     )
+    p.add_argument('--heatmap', action='store_true',
+                   help='Prints a heatmap of the position')
     p.add_argument('--stops', action='store_true',
                    help='Prints the detected stops')
     p.add_argument('--precision', action='store_true',
@@ -30,10 +40,10 @@ def build_arg_parser():
     p.add_argument('--csv', type=str, default="../logs/positions.csv",
                     help='CSV file we want to read from')
     p.add_argument('--calibration', action='store_true',
-                   help='Calibrate a certain CSV and PNG for visualization.' \
+                   help='Calibrate a certain CSV and PNG for visualization' \
                         'You need to save the results to visualize it !!!' \
                         'You also need to match the anchors with the correct' \
-                        'image so the the coordinates fit.')
+                        'image so the the coordinates fit')
     return p
 
 
@@ -195,7 +205,7 @@ def update_scatter_from_csv(anchors, args):
         stop_xs = [stop["x"] for stop in stops_pos]
         stop_ys = [stop["y"] for stop in stops_pos]
 
-        ax.scatter(stop_xs, stop_ys, c="red", s=60, marker="s", label="Stops")
+        ax.scatter(stop_xs, stop_ys, c="red", s=60, marker="^", label="Stops")
 
     # Gaussian
     if args.precision:
@@ -210,18 +220,58 @@ def update_scatter_from_csv(anchors, args):
     trail_scatter = ax.scatter([], [], c='blue', s=30, label="Positions antérieures")
 
     # Labels, legend, etc.
-    ax.set_xlabel("X (m)")
-    ax.set_ylabel("Y (m)")
+    ax.set_xlabel("X")
+    ax.set_ylabel("Y")
     ax.set_xlim(x_min, x_max)
     ax.set_ylim(y_min, y_max)
     ax.invert_yaxis()
     ax.legend()
 
+    if args.heatmap:
+        # Heatmap
+        bin_size_x = (x_max - x_min) / num_bins
+        bin_size_y = (y_max - y_min) / num_bins
+
+        x_bins = np.arange(x_min, x_max, bin_size_x)
+        y_bins = np.arange(y_min, y_max, bin_size_y)
+
+        # Compute 2D histogram
+        heatmap, xedges, yedges = np.histogram2d(xs, ys, bins=[x_bins, y_bins])
+
+        # Put white color to 0s
+        masked_heatmap = np.ma.masked_where(heatmap == 0, heatmap)
+
+        cmap = plt.colormaps["coolwarm"].copy()
+        cmap.set_bad(color="white")   # masked values will appear white
+
+        # Plot the heatmap UNDER the trail/points
+        im = ax.imshow(
+            masked_heatmap.T,
+            extent=[xedges[0], xedges[-1], yedges[0], yedges[-1]],
+            origin='lower',
+            cmap=cmap,
+            alpha=0.3
+        )
+
+        cbar = plt.colorbar(im, ax=ax)
+        cbar.set_label("Heatmap Value", rotation=270, labelpad=15)
+
     # Grid lines
-    ax.set_xticks(np.arange(x_min, x_max + 1, 50))  # major ticks every 1 m
-    ax.set_yticks(np.arange(y_min, y_max + 1, 50))
-    ax.set_xticks(np.arange(x_min, x_max + 0.2, 10), minor=True)
-    ax.set_yticks(np.arange(y_min, y_max + 0.2, 10), minor=True)
+    # Major grid spacing
+    bin_size_x = (x_max - x_min) / major_cells
+    bin_size_y = (y_max - y_min) / major_cells
+
+    # Minor grid spacing
+    minor_x = bin_size_x / minor_div
+    minor_y = bin_size_y / minor_div
+
+    # Apply major grid
+    ax.set_xticks(np.arange(x_min, x_max + bin_size_x, bin_size_x))
+    ax.set_yticks(np.arange(y_min, y_max + bin_size_y, bin_size_y))
+
+    # Apply minor grid
+    ax.set_xticks(np.arange(x_min, x_max + minor_x, minor_x), minor=True)
+    ax.set_yticks(np.arange(y_min, y_max + minor_y, minor_y), minor=True)
 
     # Draw grids
     ax.grid(which='major', linestyle=':', color='gray', linewidth=1.5, alpha=0.5)
