@@ -1,6 +1,8 @@
 import argparse
 import csv
 from datetime import datetime
+import json
+import os
 import subprocess
 
 import matplotlib.image as mpimg
@@ -25,10 +27,13 @@ def build_arg_parser():
                    help='Displays the precision of the entire log')
     p.add_argument('--trail', type=int, default=5,
                     help='Number of previous points to show (e.g. --trail 10)')
-    p.add_argument('--filename', type=str, default="../logs/positions.csv",
+    p.add_argument('--csv', type=str, default="../logs/positions.csv",
                     help='CSV file we want to read from')
     p.add_argument('--calibration', action='store_true',
-                   help='Calibrate a certain CSV and PNG for visualization')
+                   help='Calibrate a certain CSV and PNG for visualization.' \
+                        'You need to save the results to visualize it !!!' \
+                        'You also need to match the anchors with the correct' \
+                        'image so the the coordinates fit.')
     return p
 
 
@@ -39,9 +44,8 @@ def get_positions(csv_filename, stop=False):
         reader = csv.DictReader(file)
         for row in reader:
             try:
-                # Last columns are x, y, timestamp
-                x = float(row.get("pos_x"))
-                y = float(row.get("pos_y"))
+                x = float(row.get("x_transformed", row.get("pos_x")))
+                y = float(row.get("y_transformed", row.get("pos_y")))
                 if stop:
                     t = datetime.strptime(row["Timestamp"], "%Y-%m-%d %H:%M:%S.%f")
                     timestamps.append(t.timestamp())
@@ -75,16 +79,42 @@ def smart_anchors(anchors, csv_filename):
 
 def update_scatter_from_csv(anchors, args):
     """ Displays a dynamic trajectory plot of the tag positions. """
-    # --- Load CSV data ---
-    xs, ys, timestamps = get_positions(args.csv_filename)
 
+        # --- Create figure and initial plot ---
+    fig, ax = plt.subplots()
+    plt.subplots_adjust(bottom=0.25)
+
+    # Image
     if args.calibration:
-        result = subprocess.run(["python", "../calibration/main.py", "--csv", args.csv_filename])
-        print(result.stdout)
+        result = subprocess.run(
+            ["python", "../calibration/main.py", "--csv", args.csv],
+            capture_output=True, text=True
+        )
 
-    img = mpimg.imread('../calibration/data/brin_univers.png')
+        full_json = {}
+        for line in result.stdout.splitlines():
+            if not line.strip():
+                continue
+            obj = json.loads(line)
+            full_json.update(obj)
 
-    if args.precision_display:
+        experiment_path = full_json["experiment_path"]
+
+        img_path = os.path.join(experiment_path, "processed_image.png")
+
+        img = mpimg.imread(img_path)
+
+        # Only works if clicked on save (for now)
+        args.csv = os.path.join(experiment_path, "calibrated_points.csv")
+
+        new_anchors = os.path.join(experiment_path, "anchors_calibrated.json")
+        if os.path.exists(new_anchors):
+            anchors = smart_anchors(utils.load_anchors(new_anchors), args.csv)
+
+    # --- Load CSV data ---
+    xs, ys, timestamps = get_positions(args.csv)
+
+    if args.precision:
         mean_x, mean_y = np.mean(xs), np.mean(ys)
         std_x, std_y = np.std(xs), np.std(ys)
         var_x, var_y = np.var(xs), np.var(ys)
@@ -105,23 +135,19 @@ def update_scatter_from_csv(anchors, args):
     # --- Determine plot limits ---
     all_x = np.concatenate([xs, anchor_xs])
     all_y = np.concatenate([ys, anchor_ys])
-    padding = 1
+    padding = all_x.max() / 4
     x_min, x_max = all_x.min() - padding, all_x.max() + padding
     y_min, y_max = all_y.min() - padding, all_y.max() + padding
 
-    # --- Create figure and initial plot ---
-    fig, ax = plt.subplots()
-    plt.subplots_adjust(bottom=0.25)
-
-    #Image
-    ax.imshow(img, extent=[0, 10, 0, 10], aspect='auto', origin='lower')
+    if args.calibration:
+        ax.imshow(img, extent=[x_min, x_max, y_min, y_max], aspect='auto', origin='lower')
 
     # Anchors
     ax.scatter(anchor_xs, anchor_ys, c="purple", s=80, marker="X", label="Anchors")
 
-    #Stops
+    # Stops
     if args.stops:
-        useless_xs, useless_ys, useless_ts, stops_pos = detect_stops(args.csv_filename)
+        useless_xs, useless_ys, useless_ts, stops_pos = detect_stops(args.csv)
 
         stop_xs = [stop["x"] for stop in stops_pos]
         stop_ys = [stop["y"] for stop in stops_pos]
@@ -129,7 +155,7 @@ def update_scatter_from_csv(anchors, args):
         ax.scatter(stop_xs, stop_ys, c="red", s=60, marker="s", label="Stops")
 
     # Gaussian
-    if args.precision_display:
+    if args.precision:
         ax.add_patch(gaussian_circle)
 
         # Real point + Mean Comparison
@@ -149,10 +175,10 @@ def update_scatter_from_csv(anchors, args):
     ax.legend()
 
     # Grid lines
-    ax.set_xticks(np.arange(x_min, x_max + 1, 1))  # major ticks every 1 m
-    ax.set_yticks(np.arange(y_min, y_max + 1, 1))
-    ax.set_xticks(np.arange(x_min, x_max + 0.2, 0.2), minor=True)
-    ax.set_yticks(np.arange(y_min, y_max + 0.2, 0.2), minor=True)
+    ax.set_xticks(np.arange(x_min, x_max + 1, 50))  # major ticks every 1 m
+    ax.set_yticks(np.arange(y_min, y_max + 1, 50))
+    ax.set_xticks(np.arange(x_min, x_max + 0.2, 10), minor=True)
+    ax.set_yticks(np.arange(y_min, y_max + 0.2, 10), minor=True)
 
     # Draw grids
     ax.grid(which='major', linestyle=':', color='gray', linewidth=1.5, alpha=0.5)
@@ -183,7 +209,7 @@ def update_scatter_from_csv(anchors, args):
         point.set_data([xs[end_frame-1]], [ys[end_frame-1]])
 
         # Compute ghost trail points
-        start = max(0, end_frame - 1 - args.trail_length)
+        start = max(0, end_frame - 1 - args.trail)
         trail_x = xs[start:end_frame - 1]
         trail_y = ys[start:end_frame - 1]
 
@@ -308,10 +334,10 @@ def main():
     args = parser.parse_args()
 
     anchors = utils.load_anchors()
-    anchors = smart_anchors(anchors, args.filename)
+    anchors = smart_anchors(anchors, args.csv)
 
-    if (args.stops):
-        show_summary_window(args.filename)
+    # if (args.stops):
+        # show_summary_window(args.csv)
 
     try:
         update_scatter_from_csv(anchors, args)
