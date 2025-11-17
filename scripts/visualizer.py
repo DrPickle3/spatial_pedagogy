@@ -39,26 +39,69 @@ def build_arg_parser():
 
 def get_positions(csv_filename, stop=False):
     """ Reads x, y, and timestamp data from the CSV file. """
-    xs, ys, timestamps = [], [], []
+    xs, ys, timestamps, float_timestamps = [], [], [], []
     with open(csv_filename, newline='') as file:
         reader = csv.DictReader(file)
         for row in reader:
             try:
                 x = float(row.get("x_transformed", row.get("pos_x")))
                 y = float(row.get("y_transformed", row.get("pos_y")))
-                if stop:
-                    t = datetime.strptime(row["Timestamp"], "%Y-%m-%d %H:%M:%S.%f")
-                    timestamps.append(t.timestamp())
-                else:                    
-                    t = row.get("Timestamp")
-                    timestamps.append(t)
+
+                # For calculations with time
+                t = datetime.strptime(row["Timestamp"], "%Y-%m-%d %H:%M:%S.%f")
+                float_timestamps.append(t.timestamp())
+                # For display
+                t = row.get("Timestamp")
+                timestamps.append(t)
+
                 xs.append(x)
                 ys.append(y)
             except ValueError:
                 continue  # skip invalid rows
 
     xs, ys = np.array(xs), np.array(ys)
-    return xs, ys, timestamps
+
+    xs, ys, timestamps, float_timestamps = densify_positions(xs, ys, timestamps, float_timestamps)
+
+    return xs, ys, timestamps, float_timestamps
+
+
+def densify_positions(xs, ys, timestamps, float_timestamps, max_dt=0.2):
+    """
+    Inserts interpolated positions if the time difference between samples 
+    exceeds max_dt seconds.
+    """
+    new_xs = [xs[0]]
+    new_ys = [ys[0]]
+    new_ts = [float_timestamps[0]]
+    padded_ts = [timestamps[0]]
+
+    for i in range(1, len(xs)):
+        x0, y0, t0 = xs[i-1], ys[i-1], float_timestamps[i-1]
+        x1, y1, t1 = xs[i], ys[i], float_timestamps[i]
+
+        ts1 = timestamps[i]
+
+        dt = t1 - t0
+
+        # number of interpolated steps
+        if dt > max_dt:
+            steps = int(dt // max_dt)
+
+            for s in range(1, steps + 1):
+                r = s / (steps + 1)
+                new_xs.append(x0 + r * (x1 - x0))
+                new_ys.append(y0 + r * (y1 - y0))
+                new_ts.append(t0 + r * dt)
+                padded_ts.append(padded_ts[-1])
+
+        # always append real measurement
+        new_xs.append(x1)
+        new_ys.append(y1)
+        new_ts.append(t1)
+        padded_ts.append(ts1)
+
+    return np.array(new_xs), np.array(new_ys), padded_ts, new_ts
 
 
 def smart_anchors(anchors, csv_filename):
@@ -112,7 +155,7 @@ def update_scatter_from_csv(anchors, args):
             anchors = smart_anchors(utils.load_anchors(new_anchors), args.csv)
 
     # --- Load CSV data ---
-    xs, ys, timestamps = get_positions(args.csv)
+    xs, ys, timestamps, float_timestamps = get_positions(args.csv)
 
     if args.precision:
         mean_x, mean_y = np.mean(xs), np.mean(ys)
@@ -253,9 +296,9 @@ def update_scatter_from_csv(anchors, args):
 
 def detect_stops(csv_filename, speed_thresh=0.2, min_duration=1.0):
     """ Detects stops based on movement speed threshold and duration. """
-    xs, ys, timestamps = get_positions(csv_filename, True)
+    xs, ys, timestamps, float_timestamps = get_positions(csv_filename, True)
 
-    dt = np.diff(timestamps)
+    dt = np.diff(float_timestamps)
     dt[dt == 0] = 1e-6
     vx = np.diff(xs) / dt
     vy = np.diff(ys) / dt
@@ -276,7 +319,7 @@ def detect_stops(csv_filename, speed_thresh=0.2, min_duration=1.0):
         while j + 1 < n and low[j + 1]:
             j += 1
 
-        duration = timestamps[j] - timestamps[i]
+        duration = float_timestamps[j] - float_timestamps[i]
         if duration >= min_duration:
             stops.append({
                 "start_frame": i + 1,
@@ -286,13 +329,13 @@ def detect_stops(csv_filename, speed_thresh=0.2, min_duration=1.0):
             })
         i = j + 1
 
-    return xs, ys, timestamps, stops
+    return xs, ys, float_timestamps, stops
 
 
 def show_summary_window(csv_filename):
     """ Displays a static summary window with mean and stop stats. """
 
-    xs, ys, timestamps, stops = detect_stops(csv_filename)
+    xs, ys, float_timestamps, stops = detect_stops(csv_filename)
 
     fig, ax = plt.subplots(figsize=(6, 4))
     ax.axis('off')
@@ -303,7 +346,7 @@ def show_summary_window(csv_filename):
     if stops:
         for s in stops:
             start, end = s["start_frame"], s["end_frame"]
-            durations.append(timestamps[end-1] - timestamps[start-1])
+            durations.append(float_timestamps[end-1] - float_timestamps[start-1])
 
     if durations:
         mean_stop = np.mean(durations)
