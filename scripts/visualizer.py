@@ -2,6 +2,7 @@ import argparse
 import csv
 from datetime import datetime
 import json
+import logging
 import os
 import subprocess
 
@@ -9,7 +10,7 @@ import matplotlib.image as mpimg
 import matplotlib.cm as cm
 import matplotlib.pyplot as plt
 from matplotlib.patches import Ellipse
-from matplotlib.widgets import RangeSlider, Button
+from matplotlib.widgets import RangeSlider, Button                  
 
 import numpy as np
 from scipy.ndimage import uniform_filter1d
@@ -19,7 +20,7 @@ import utils
 # Heatmap
 num_bins = 50
 
-# Amount of big
+# Cells sizes for the grid
 major_cells = 10
 minor_div = 5
 
@@ -111,6 +112,8 @@ def densify_positions(xs, ys, timestamps, float_timestamps, max_dt=0.2):
         new_ts.append(t1)
         padded_ts.append(ts1)
 
+    logging.info("Positions densified")
+
     return np.array(new_xs), np.array(new_ys), padded_ts, new_ts
 
 
@@ -139,6 +142,7 @@ def update_scatter_from_csv(anchors, args):
 
     # Image
     if args.calibration:
+        logging.debug("Calibration process")
         result = subprocess.run(
             ["python", "../calibration/main.py", "--csv", args.csv],
             capture_output=True, text=True
@@ -157,10 +161,11 @@ def update_scatter_from_csv(anchors, args):
 
         img = mpimg.imread(img_path)
 
-        # Only works if clicked on save (for now)
+        # Taking calibrated coordinates for the positions and the anchors
+        # Only works if clicked on save (TODO : Make it work even without saving)
         args.csv = os.path.join(experiment_path, "calibrated_points.csv")
-
         new_anchors = os.path.join(experiment_path, "anchors_calibrated.json")
+
         if os.path.exists(new_anchors):
             anchors = smart_anchors(utils.load_anchors(new_anchors), args.csv)
 
@@ -168,6 +173,7 @@ def update_scatter_from_csv(anchors, args):
     xs, ys, timestamps, float_timestamps = get_positions(args.csv)
 
     if args.precision:
+        logging.debug("Precision calculations")
         mean_x, mean_y = np.mean(xs), np.mean(ys)
         std_x, std_y = np.std(xs), np.std(ys)
         var_x, var_y = np.var(xs), np.var(ys)
@@ -228,6 +234,7 @@ def update_scatter_from_csv(anchors, args):
     ax.legend()
 
     if args.heatmap:
+        logging.debug("Heatmap generation")
         # Heatmap
         bin_size_x = (x_max - x_min) / num_bins
         bin_size_y = (y_max - y_min) / num_bins
@@ -348,6 +355,8 @@ def detect_stops(csv_filename, speed_thresh=0.2, min_duration=1.0):
     """ Detects stops based on movement speed threshold and duration. """
     xs, ys, timestamps, float_timestamps = get_positions(csv_filename, True)
 
+    logging.debug("Stops calculation")
+
     dt = np.diff(float_timestamps)
     dt[dt == 0] = 1e-6
     vx = np.diff(xs) / dt
@@ -426,11 +435,13 @@ def main():
     parser = build_arg_parser()
     args = parser.parse_args()
 
+    logging.getLogger().setLevel(logging.WARNING)
+
     anchors = utils.load_anchors()
     anchors = smart_anchors(anchors, args.csv)
 
-    # if (args.stops):
-        # show_summary_window(args.csv)
+    if (args.stops):
+        show_summary_window(args.csv)
 
     try:
         update_scatter_from_csv(anchors, args)
