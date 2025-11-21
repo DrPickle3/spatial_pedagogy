@@ -18,7 +18,7 @@ from scipy.ndimage import uniform_filter1d
 import utils
 
 # Heatmap
-num_bins = 50
+num_bins = 20
 
 # Cells sizes for the grid
 major_cells = 10
@@ -168,6 +168,9 @@ def update_scatter_from_csv(anchors, args):
 
         if os.path.exists(new_anchors):
             anchors = smart_anchors(utils.load_anchors(new_anchors), args.csv)
+        
+        # Avoid the stretching of the image
+        ax.set_aspect("equal")
 
     # --- Load CSV data ---
     xs, ys, timestamps, float_timestamps = get_positions(args.csv)
@@ -185,7 +188,7 @@ def update_scatter_from_csv(anchors, args):
             facecolor='none',
             linestyle='--',
             linewidth=1.5,
-            label=f"Incertitude (2σ) — VarX={var_x:.3f}, VarY={var_y:.3f}"
+            label=f"Incertitude (2σ), VarX={var_x:.3f}, VarY={var_y:.3f}"
         )
     
     anchor_xs = [coord[0] for coord in anchors.values()]
@@ -257,7 +260,8 @@ def update_scatter_from_csv(anchors, args):
             extent=[xedges[0], xedges[-1], yedges[0], yedges[-1]],
             origin='lower',
             cmap=cmap,
-            alpha=0.3
+            alpha=0.3,
+            aspect='auto'
         )
 
         cbar = plt.colorbar(im, ax=ax)
@@ -285,7 +289,19 @@ def update_scatter_from_csv(anchors, args):
     ax.grid(which='minor', linestyle=':', color='gray', linewidth=1, alpha=0.3)
 
     # Title
-    ax.set_title(f"Carte de trajectoire — Frame 1/{len(xs)}\n{timestamps[0]}")
+    ax.set_title(f"Carte de trajectoire : Frame 1/{len(xs)}\n{timestamps[0]}")
+
+    ax_duration = plt.axes([0.25, 0.06, 0.5, 0.03])
+    ax_duration.axis("off")
+
+    total_str = format_duration(float_timestamps[-1] - float_timestamps[0])
+
+    duration_text = ax_duration.text(
+        0.5, 0.5,
+        f"00:00 / {total_str}",
+        ha="center", va="center",
+        fontsize=10
+    )
 
     # --- Slider setup ---
     ax_slider = plt.axes([0.25, 0.1, 0.5, 0.03])
@@ -313,6 +329,13 @@ def update_scatter_from_csv(anchors, args):
         trail_x = xs[start:end_frame - 1]
         trail_y = ys[start:end_frame - 1]
 
+        # Update the dynamic time duration
+
+        current_duration = float_timestamps[end_frame - 1] - float_timestamps[0]
+        cur_str = format_duration(current_duration)
+
+        duration_text.set_text(f"{cur_str} / {total_str}")
+
         # Fade effect
         n = len(trail_x)
         if n > 0:
@@ -323,7 +346,7 @@ def update_scatter_from_csv(anchors, args):
         else:
             trail_scatter.set_offsets(np.empty((0, 2)))
 
-        ax.set_title(f"Carte de trajectoire — Frame {end_frame}/{len(xs)}\n{timestamps[end_frame - 1]}")
+        ax.set_title(f"Carte de trajectoire : Frame {end_frame}/{len(xs)}\n{timestamps[end_frame - 1]}")
         fig.canvas.draw_idle()
 
     slider.on_changed(update)
@@ -349,6 +372,18 @@ def update_scatter_from_csv(anchors, args):
     btn_prev.on_clicked(prev_frame)
 
     plt.show()
+
+
+def format_duration(seconds_total):
+    """ Format the dynamic timestamp under the slider """
+    hours = int(seconds_total // 3600)
+    minutes = int((seconds_total % 3600) // 60)
+    seconds = int(seconds_total % 60)
+    
+    if hours > 0:
+        return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+    else:
+        return f"{minutes:02d}:{seconds:02d}"
 
 
 def detect_stops(csv_filename, speed_thresh=0.2, min_duration=1.0):
@@ -431,7 +466,7 @@ def show_summary_window(csv_filename):
 
 
 def main():
-    """ Main entry point — parses args and launches visualization or stop detection. """
+    """ Main entry point. Parses args and launches visualization or stop detection. """
     parser = build_arg_parser()
     args = parser.parse_args()
 

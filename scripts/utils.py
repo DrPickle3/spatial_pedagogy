@@ -1,13 +1,16 @@
 import csv
 import datetime
 import json
-import matplotlib.pyplot as plt
-import numpy as np
+import logging
 import os
 import re
-from scipy.optimize import minimize
 import socket
+
+import matplotlib.pyplot as plt
+import numpy as np
+from scipy.optimize import minimize
 import turtle
+
 from zeroconf import ServiceInfo, Zeroconf
 
 TCP_IP = "0.0.0.0"
@@ -29,6 +32,8 @@ def load_anchors(config_path="../config.json"):
 
     global anchors
     anchors = {k: tuple(v) for k, v in data["anchors"].items()}
+
+    logging.debug("Anchors loaded")
     return anchors
 
 
@@ -39,10 +44,10 @@ def on_exit():
 
 def main_loop(sock, display = False):
     """ Main loop handling TCP data reception and visualization """
-    print(f"***Waiting for connection on port {TCP_PORT}***")
+    logging.info(f"***Waiting for connection on port {TCP_PORT}***")
     conn, addr = sock.accept()
     conn.settimeout(5.0)
-    print(f"***Connection accepted from {addr}***")
+    logging.info(f"***Connection accepted from {addr}***")
 
     if display:
         global t_ui, t_anchors, t_tag
@@ -93,11 +98,12 @@ def main_loop(sock, display = False):
                         draw_uwb_tag(x, y, "TAG", t_tag)
 
     except (ConnectionResetError, BrokenPipeError):
-        print(f"***Connection lost from {addr}, waiting for new device...***")
+        logging.warning(f"***Connection lost from {addr}, waiting for new device...***")
         conn.close()
         raise ConnectionResetError
     except socket.timeout:
         conn.close()
+        logging.warning("Lost connection to the Tag")
         pass # to try again
     except KeyboardInterrupt:
         on_exit()
@@ -112,6 +118,7 @@ def tag_pos(ranges, anchors):
     dists = np.array([ranges[k] for k in keys])
 
     if len(dists) == 2:
+        logging.debug("Position with only 2 anchors")
         sorted_pairs = sorted(zip(anchor_coords, dists), key=lambda p: p[0][0])
         left_anchor, left_dist = sorted_pairs[0]
         right_anchor, right_dist = sorted_pairs[1]
@@ -198,18 +205,18 @@ def read_data(conn, buffer):
         return uwb_list, buffer
 
     except json.JSONDecodeError as e:
-        print("EXCEPTION!", e, last_json if 'last_json' in locals() else buffer)
+        logging.error("EXCEPTION!", e, last_json if 'last_json' in locals() else buffer)
         return [], buffer
     except socket.timeout:
-        print("Lost connection to the Tag")
         raise socket.timeout
     except Exception as e:
-        print("EXCEPTION!", e)
+        logging.error("EXCEPTION!", e)
         return [], buffer
 
 
 def clear_file():
     """ Clear and reinitialize the CSV output file """
+    logging.debug("CSV file cleared")
     with open(filename, "w", newline="") as file:
         writer = csv.writer(file)
         writer.writerow([
