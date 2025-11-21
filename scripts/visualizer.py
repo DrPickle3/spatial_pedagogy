@@ -139,6 +139,7 @@ def update_scatter_from_csv(anchors, args):
         # --- Create figure and initial plot ---
     fig, ax = plt.subplots()
     plt.subplots_adjust(bottom=0.25)
+    ax.set_aspect("equal")
 
     # Image
     if args.calibration:
@@ -168,9 +169,6 @@ def update_scatter_from_csv(anchors, args):
 
         if os.path.exists(new_anchors):
             anchors = smart_anchors(utils.load_anchors(new_anchors), args.csv)
-        
-        # Avoid the stretching of the image
-        ax.set_aspect("equal")
 
     # --- Load CSV data ---
     xs, ys, timestamps, float_timestamps = get_positions(args.csv)
@@ -197,12 +195,12 @@ def update_scatter_from_csv(anchors, args):
     # --- Determine plot limits ---
     all_x = np.concatenate([xs, anchor_xs])
     all_y = np.concatenate([ys, anchor_ys])
-    padding = all_x.max() / 4
+    padding = utils.img_padding
     x_min, x_max = all_x.min() - padding, all_x.max() + padding
     y_min, y_max = all_y.min() - padding, all_y.max() + padding
 
     if args.calibration:
-        ax.imshow(img, extent=[x_min, x_max, y_min, y_max], aspect='auto', origin='lower')
+        ax.imshow(img, extent=[x_min, x_max, y_min, y_max], aspect='equal', origin='lower')
 
     # Anchors
     ax.scatter(anchor_xs, anchor_ys, c="purple", s=80, marker="X", label="Anchors")

@@ -22,6 +22,8 @@ filename = "../logs/positions.csv"
 
 minimum_anchors_for_position = 4    # maximum precision
 
+img_padding = 25
+
 
 def load_anchors(config_path="../config.json"):
     """ Load anchors from a JSON configuration file. """
