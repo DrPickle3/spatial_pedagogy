@@ -4,7 +4,8 @@ import utils
 def build_arg_parser():
     """Build argument parser."""
     p = argparse.ArgumentParser(
-        description="Writing position of Tag with Anchors in CSV"
+        description="Server to receive the data from the Tag, compute its" \
+                    "position and write it in a CSV file."
     )    
     p.add_argument('--display', action='store_true',
                     help='Display real time graphic of position and Anchors')

@@ -12,6 +12,11 @@ pio run
 pio run --target upload
 ```
 
+### To monitor the prints of the device
+```bash
+pio device monitor
+```
+
 ## Code modifications to make the devices work
 
 In the DW1000 original library, it does not support having a 5th anchor connected to a tag.

@@ -24,7 +24,7 @@ def main():
     args = parser.parse_args()
     csv_path = args.csv
 
-    logging.getLogger().setLevel(logging.INFO)
+    logging.getLogger().setLevel(logging.INFO) # To see the results
 
     if not os.path.exists(csv_path):
         logging.error(f"File {csv_path} does not exist.")
@@ -37,6 +37,8 @@ def main():
     if not rows:
         logging.warning("CSV is empty.")
         return
+    
+    logging.debug(f"{csv_path} loaded.")
 
     first_row = rows[0]
     nb_anchors = int(first_row["Nb Anchors"])

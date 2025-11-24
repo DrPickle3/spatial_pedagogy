@@ -36,8 +36,8 @@ def build_arg_parser():
                    help='Prints the detected stops')
     p.add_argument('--precision', action='store_true',
                    help='Displays the precision of the entire log')
-    p.add_argument('--trail', type=int, default=5,
-                    help='Number of previous points to show (e.g. --trail 10)')
+    p.add_argument('--trail', type=int, default=10,
+                    help='Number of previous points to show (e.g. --trail 25)')
     p.add_argument('--csv', type=str, default="../logs/positions.csv",
                     help='CSV file we want to read from')
     p.add_argument('--calibration', action='store_true',
@@ -48,8 +48,19 @@ def build_arg_parser():
     return p
 
 
-def get_positions(csv_filename, stop=False):
-    """ Reads x, y, and timestamp data from the CSV file. """
+def get_positions(csv_filename):
+    """
+    Reads x, y, and timestamp data from the CSV file.
+
+    Args:
+        csv_filename (str) : path to the CSV file
+
+    Returns:
+        xs (numpy.ndarray) : every x coordinate of each measured position
+        ys (numpy.ndarray) : every y coordinate of each measured position
+        timestamps (numpy.ndarray) : every timestamps in string
+        float_timestamps (numpy.ndarray) : every timestamps in float
+    """
     xs, ys, timestamps, float_timestamps = [], [], [], []
     with open(csv_filename, newline='') as file:
         reader = csv.DictReader(file)
@@ -61,6 +72,7 @@ def get_positions(csv_filename, stop=False):
                 # For calculations with time
                 t = datetime.strptime(row["Timestamp"], "%Y-%m-%d %H:%M:%S.%f")
                 float_timestamps.append(t.timestamp())
+
                 # For display
                 t = row.get("Timestamp")
                 timestamps.append(t)
@@ -79,8 +91,26 @@ def get_positions(csv_filename, stop=False):
 
 def densify_positions(xs, ys, timestamps, float_timestamps, max_dt=0.2):
     """
-    Inserts interpolated positions if the time difference between samples 
+    Inserts interpolated positions if the time difference between samples
     exceeds max_dt seconds.
+
+    Args:
+        xs (numpy.ndarray) : every x coordinate of each measured position
+        ys (numpy.ndarray) : every y coordinate of each measured position
+        timestamps (numpy.ndarray) : every timestamps in string
+        float_timestamps (numpy.ndarray) : every timestamps in float
+        max_dt: (float) : time difference maximum between 2 positions. 
+                            Defaults to 0.2 (5/s)
+
+    Returns:
+        new_xs (numpy.ndarray) : every x coordinate of each measured position +
+                                 padded interpolated positions
+        new_ys (numpy.ndarray) : every y coordinate of each measured position +
+                                 padded interpolated positions
+        padded_ts (numpy.ndarray) : every timestamps in string + 
+                                 padded (repeated the last known timestamp)
+        new_ts (numpy.ndarray) : every timestamps in float + 
+                                 padded (repeated the last known timestamp)
     """
     new_xs = [xs[0]]
     new_ys = [ys[0]]
@@ -118,7 +148,17 @@ def densify_positions(xs, ys, timestamps, float_timestamps, max_dt=0.2):
 
 
 def smart_anchors(anchors, csv_filename):
-    """ Returns only the anchors that were used in the CSV file. """
+    """
+    Returns only the anchors that were used in the CSV file.
+    Args:        
+        anchors (dictionary{key: anchor id, value: tuple(x, y, z)}) : 
+                                                    anchors positions with ids
+        csv_filename (str) : path to the CSV file
+
+    Returns:
+        anchors (dictionary{key: anchor id, value: tuple(x, y, z)}) : 
+                                anchors positions with ids only used in the csv
+    """
     used_anchors = set()
     with open(csv_filename, newline='') as file:
         reader = csv.DictReader(file)
@@ -134,246 +174,270 @@ def smart_anchors(anchors, csv_filename):
 
 
 def update_scatter_from_csv(anchors, args):
-    """ Displays a dynamic trajectory plot of the tag positions. """
+    """
+    Main loop : Displays a dynamic trajectory plot of the tag positions.
 
+    Args:        
+        anchors (dictionary{key: anchor id, value: tuple(x, y, z)}) : 
+                                                    anchors positions with ids
+        args (argparse.Namespace) : All command line args are accessible from it
+    """
+    try :
         # --- Create figure and initial plot ---
-    fig, ax = plt.subplots()
-    plt.subplots_adjust(bottom=0.25)
-    ax.set_aspect("equal")
+        fig, ax = plt.subplots()
+        plt.subplots_adjust(bottom=0.25)
+        ax.set_aspect("equal") # Avoids stretching
 
-    # Image
-    if args.calibration:
-        logging.debug("Calibration process")
-        result = subprocess.run(
-            ["python", "../calibration/main.py", "--csv", args.csv],
-            capture_output=True, text=True
-        )
+        # Image
+        if args.calibration:
+            logging.debug("Calibration process")
+            result = subprocess.run(
+                ["python", "../calibration/main.py", "--csv", args.csv],
+                capture_output=True, text=True
+            )
 
-        full_json = {}
-        for line in result.stdout.splitlines():
-            if not line.strip():
-                continue
-            obj = json.loads(line)
-            full_json.update(obj)
+            full_json = {}
+            for line in result.stdout.splitlines():
+                if not line.strip():
+                    continue
+                obj = json.loads(line)
+                full_json.update(obj)
 
-        experiment_path = full_json["experiment_path"]
+            experiment_path = full_json["experiment_path"]
 
-        img_path = os.path.join(experiment_path, "processed_image.png")
+            img_path = os.path.join(experiment_path, "processed_image.png")
 
-        img = mpimg.imread(img_path)
+            img = mpimg.imread(img_path)
 
-        # Taking calibrated coordinates for the positions and the anchors
-        # Only works if clicked on save (TODO : Make it work even without saving)
-        args.csv = os.path.join(experiment_path, "calibrated_points.csv")
-        new_anchors = os.path.join(experiment_path, "anchors_calibrated.json")
+            # Taking calibrated coordinates for the positions and the anchors
+            # Only works if clicked on save (TODO : Make it not crash if not saved)
+            args.csv = os.path.join(experiment_path, "calibrated_points.csv")
+            new_anchors = os.path.join(experiment_path, "anchors_calibrated.json")
 
-        if os.path.exists(new_anchors):
-            anchors = smart_anchors(utils.load_anchors(new_anchors), args.csv)
+            if os.path.exists(new_anchors):
+                anchors = smart_anchors(utils.load_anchors(new_anchors), args.csv)
 
-    # --- Load CSV data ---
-    xs, ys, timestamps, float_timestamps = get_positions(args.csv)
+        # --- Load CSV data ---
+        xs, ys, timestamps, float_timestamps = get_positions(args.csv)
 
-    if args.precision:
-        logging.debug("Precision calculations")
-        mean_x, mean_y = np.mean(xs), np.mean(ys)
-        std_x, std_y = np.std(xs), np.std(ys)
-        var_x, var_y = np.var(xs), np.var(ys)
-        gaussian_circle = Ellipse(
-            (mean_x, mean_y),
-            width=4*std_x,  # 4*std gives ~95.4% coverage
-            height=4*std_y,
-            edgecolor='orange',
-            facecolor='none',
-            linestyle='--',
-            linewidth=1.5,
-            label=f"Incertitude (2σ), VarX={var_x:.3f}, VarY={var_y:.3f}"
-        )
-    
-    anchor_xs = [coord[0] for coord in anchors.values()]
-    anchor_ys = [coord[1] for coord in anchors.values()]
+        # This is better for non moving Tag
+        if args.precision:
+            logging.debug("Precision calculations")
+            mean_x, mean_y = np.mean(xs), np.mean(ys)
+            std_x, std_y = np.std(xs), np.std(ys)
+            var_x, var_y = np.var(xs), np.var(ys)
+            gaussian_circle = Ellipse(
+                (mean_x, mean_y),
+                width=4*std_x,  # 4*std gives ~95.4% coverage
+                height=4*std_y,
+                edgecolor='orange',
+                facecolor='none',
+                linestyle='--',
+                linewidth=1.5,
+                label=f"Incertitude (2σ), VarX={var_x:.3f}, VarY={var_y:.3f}"
+            )
 
-    # --- Determine plot limits ---
-    all_x = np.concatenate([xs, anchor_xs])
-    all_y = np.concatenate([ys, anchor_ys])
-    padding = utils.img_padding
-    x_min, x_max = all_x.min() - padding, all_x.max() + padding
-    y_min, y_max = all_y.min() - padding, all_y.max() + padding
+            ax.add_patch(gaussian_circle)
 
-    if args.calibration:
-        ax.imshow(img, extent=[x_min, x_max, y_min, y_max], aspect='equal', origin='lower')
-
-    # Anchors
-    ax.scatter(anchor_xs, anchor_ys, c="purple", s=80, marker="X", label="Anchors")
-
-    # Stops
-    if args.stops:
-        useless_xs, useless_ys, useless_ts, stops_pos = detect_stops(args.csv)
-
-        stop_xs = [stop["x"] for stop in stops_pos]
-        stop_ys = [stop["y"] for stop in stops_pos]
-
-        ax.scatter(stop_xs, stop_ys, c="red", s=60, marker="^", label="Stops")
-
-    # Gaussian
-    if args.precision:
-        ax.add_patch(gaussian_circle)
-
-        # Real point + Mean Comparison
-        ax.plot([2.3622], [1.905], 'go', markersize=6, label="Position réelle")
-        ax.plot([mean_x], [mean_y], 'yo', markersize=6, label="Position moyenne")
-
-    # Dynamic point (moving tag)
-    point, = ax.plot([], [], 'go', markersize=6, label="Position mesurée")
-    trail_scatter = ax.scatter([], [], c='blue', s=30, label="Positions antérieures")
-
-    # Labels, legend, etc.
-    ax.set_xlabel("X")
-    ax.set_ylabel("Y")
-    ax.set_xlim(x_min, x_max)
-    ax.set_ylim(y_min, y_max)
-    ax.invert_yaxis()
-    ax.legend()
-
-    if args.heatmap:
-        logging.debug("Heatmap generation")
-        # Heatmap
-        bin_size_x = (x_max - x_min) / num_bins
-        bin_size_y = (y_max - y_min) / num_bins
-
-        x_bins = np.arange(x_min, x_max, bin_size_x)
-        y_bins = np.arange(y_min, y_max, bin_size_y)
-
-        # Compute 2D histogram
-        heatmap, xedges, yedges = np.histogram2d(xs, ys, bins=[x_bins, y_bins])
-
-        # Put white color to 0s
-        masked_heatmap = np.ma.masked_where(heatmap == 0, heatmap)
-
-        cmap = plt.colormaps["coolwarm"].copy()
-        cmap.set_bad(color="white")   # masked values will appear white
-
-        # Plot the heatmap UNDER the trail/points
-        im = ax.imshow(
-            masked_heatmap.T,
-            extent=[xedges[0], xedges[-1], yedges[0], yedges[-1]],
-            origin='lower',
-            cmap=cmap,
-            alpha=0.3,
-            aspect='auto'
-        )
-
-        cbar = plt.colorbar(im, ax=ax)
-        cbar.set_label("Heatmap Value", rotation=270, labelpad=15)
-
-    # Grid lines
-    # Major grid spacing
-    bin_size_x = (x_max - x_min) / major_cells
-    bin_size_y = (y_max - y_min) / major_cells
-
-    # Minor grid spacing
-    minor_x = bin_size_x / minor_div
-    minor_y = bin_size_y / minor_div
-
-    # Apply major grid
-    ax.set_xticks(np.arange(x_min, x_max + bin_size_x, bin_size_x))
-    ax.set_yticks(np.arange(y_min, y_max + bin_size_y, bin_size_y))
-
-    # Apply minor grid
-    ax.set_xticks(np.arange(x_min, x_max + minor_x, minor_x), minor=True)
-    ax.set_yticks(np.arange(y_min, y_max + minor_y, minor_y), minor=True)
-
-    # Draw grids
-    ax.grid(which='major', linestyle=':', color='gray', linewidth=1.5, alpha=0.5)
-    ax.grid(which='minor', linestyle=':', color='gray', linewidth=1, alpha=0.3)
-
-    # Title
-    ax.set_title(f"Carte de trajectoire : Frame 1/{len(xs)}\n{timestamps[0]}")
-
-    ax_duration = plt.axes([0.25, 0.06, 0.5, 0.03])
-    ax_duration.axis("off")
-
-    total_str = format_duration(float_timestamps[-1] - float_timestamps[0])
-
-    duration_text = ax_duration.text(
-        0.5, 0.5,
-        f"00:00 / {total_str}",
-        ha="center", va="center",
-        fontsize=10
-    )
-
-    # --- Slider setup ---
-    ax_slider = plt.axes([0.25, 0.1, 0.5, 0.03])
-    slider = RangeSlider(ax_slider, 'Frame', 1, len(xs), valinit=(1, len(xs)), valfmt='%d')
-
-    # Buttons for navigation
-    ax_prev = plt.axes([0.1, 0.1, 0.05, 0.03])
-    ax_next = plt.axes([0.9, 0.1, 0.05, 0.03])
-    btn_prev = Button(ax_prev, "◀")
-    btn_next = Button(ax_next, "▶")
-
-    # --- Update function ---
-    def update(val):
-        """ Updates plot when slider range changes. """
-        start_frame, end_frame = map(int, slider.val)
-        selected_x = xs[start_frame-1:end_frame]
-        selected_y = ys[start_frame-1:end_frame]
-        trail_scatter.set_offsets(np.c_[selected_x, selected_y])
+            # Real point + Mean Comparison
+            ax.plot([2.3622], [1.905], 'go', markersize=6, label="Position réelle")
+            ax.plot([mean_x], [mean_y], 'yo', markersize=6, label="Position moyenne")
         
-        # Keep the red point at the end
-        point.set_data([xs[end_frame-1]], [ys[end_frame-1]])
+        anchor_xs = [coord[0] for coord in anchors.values()]
+        anchor_ys = [coord[1] for coord in anchors.values()]
 
-        # Compute ghost trail points
-        start = max(0, end_frame - 1 - args.trail)
-        trail_x = xs[start:end_frame - 1]
-        trail_y = ys[start:end_frame - 1]
+        # --- Determine plot limits ---
+        all_x = np.concatenate([xs, anchor_xs])
+        all_y = np.concatenate([ys, anchor_ys])
+        padding = utils.img_padding
+        x_min, x_max = all_x.min() - padding, all_x.max() + padding
+        y_min, y_max = all_y.min() - padding, all_y.max() + padding
 
-        # Update the dynamic time duration
+        if args.calibration:
+            ax.imshow(img, extent=[x_min, x_max, y_min, y_max], aspect='equal', origin='lower')
 
-        current_duration = float_timestamps[end_frame - 1] - float_timestamps[0]
-        cur_str = format_duration(current_duration)
+        # Anchors
+        ax.scatter(anchor_xs, anchor_ys, c="purple", s=80, marker="X", label="Anchors")
 
-        duration_text.set_text(f"{cur_str} / {total_str}")
+        # Stops
+        if args.stops:
+            useless_xs, useless_ys, useless_ts, stops_pos = detect_stops(args.csv)
 
-        # Fade effect
-        n = len(trail_x)
-        if n > 0:
-            alphas = np.linspace(0.1, 0.8, n)
-            colors = [(0, 0, 1, a) for a in alphas]
-            trail_scatter.set_offsets(np.c_[trail_x, trail_y][::-1])
-            trail_scatter.set_facecolors(colors[::-1])
-        else:
-            trail_scatter.set_offsets(np.empty((0, 2)))
+            stop_xs = [stop["x"] for stop in stops_pos]
+            stop_ys = [stop["y"] for stop in stops_pos]
 
-        ax.set_title(f"Carte de trajectoire : Frame {end_frame}/{len(xs)}\n{timestamps[end_frame - 1]}")
-        fig.canvas.draw_idle()
+            ax.scatter(stop_xs, stop_ys, c="red", s=60, marker="^", label="Stops")
 
-    slider.on_changed(update)
+        # Dynamic point (moving tag)
+        point, = ax.plot([], [], 'go', markersize=6, label="Position mesurée")
+        trail_scatter = ax.scatter([], [], c='blue', s=30, label="Positions antérieures")
 
-    # --- Initial frame ---
-    update(0)
+        # Labels, legend, etc.
+        ax.set_xlabel("X")
+        ax.set_ylabel("Y")
+        ax.set_xlim(x_min, x_max)
+        ax.set_ylim(y_min, y_max)
+        ax.invert_yaxis()
+        ax.legend()
 
-    def next_frame(event):
-        fig.canvas.release_mouse(slider.ax)
-        start_frame, end_frame = map(int, slider.val)
-        if end_frame < len(xs):
-            slider.set_val([start_frame, end_frame + 1])
+        # Heatmap
+        if args.heatmap:
+            logging.debug("Heatmap generation")
+            # Heatmap
+            bin_size_x = (x_max - x_min) / num_bins
+            bin_size_y = (y_max - y_min) / num_bins
 
-    def prev_frame(event):
-        fig.canvas.release_mouse(slider.ax)
-        start_frame, end_frame = map(int, slider.val)
-        if end_frame > start_frame:
-            slider.set_val([start_frame, end_frame - 1])
-        elif end_frame > 1:
-            slider.set_val([start_frame - 1, end_frame - 1])
+            x_bins = np.arange(x_min, x_max, bin_size_x)
+            y_bins = np.arange(y_min, y_max, bin_size_y)
 
-    btn_next.on_clicked(next_frame)
-    btn_prev.on_clicked(prev_frame)
+            # Compute 2D histogram
+            heatmap, xedges, yedges = np.histogram2d(xs, ys, bins=[x_bins, y_bins])
 
-    plt.show()
+            # Put white color to 0s
+            masked_heatmap = np.ma.masked_where(heatmap == 0, heatmap)
+
+            cmap = plt.colormaps["Reds"].copy()
+            cmap.set_bad(color="white")   # In case there are invalid values
+
+            # Plot the heatmap UNDER the trail/points
+            im = ax.imshow(
+                masked_heatmap.T,
+                extent=[xedges[0], xedges[-1], yedges[0], yedges[-1]],
+                origin='lower',
+                cmap=cmap,
+                alpha=0.3,
+                aspect='auto'
+            )
+
+            cbar = plt.colorbar(im, ax=ax)
+            cbar.set_label("Heatmap Value", rotation=270, labelpad=15)
+
+        # Grid lines
+        # Major grid spacing
+        bin_size_x = (x_max - x_min) / major_cells
+        bin_size_y = (y_max - y_min) / major_cells
+
+        # Minor grid spacing
+        minor_x = bin_size_x / minor_div
+        minor_y = bin_size_y / minor_div
+
+        # Apply major grid
+        ax.set_xticks(np.arange(x_min, x_max + bin_size_x, bin_size_x))
+        ax.set_yticks(np.arange(y_min, y_max + bin_size_y, bin_size_y))
+
+        # Apply minor grid
+        ax.set_xticks(np.arange(x_min, x_max + minor_x, minor_x), minor=True)
+        ax.set_yticks(np.arange(y_min, y_max + minor_y, minor_y), minor=True)
+
+        # Draw grids
+        ax.grid(which='major', linestyle=':', color='gray', linewidth=1.5, alpha=0.5)
+        ax.grid(which='minor', linestyle=':', color='gray', linewidth=1, alpha=0.3)
+
+        # Title
+        ax.set_title(f"Carte de trajectoire : Frame 1/{len(xs)}\n{timestamps[0]}")
+
+        ax_duration = plt.axes([0.25, 0.06, 0.5, 0.03])
+        ax_duration.axis("off")
+
+        total_str = format_duration(float_timestamps[-1] - float_timestamps[0])
+
+        duration_text = ax_duration.text(
+            0.5, 0.5,
+            f"00:00 / {total_str}",
+            ha="center", va="center",
+            fontsize=10
+        )
+
+        # --- Slider setup ---
+        ax_slider = plt.axes([0.25, 0.1, 0.5, 0.03])
+        slider = RangeSlider(ax_slider, 'Frame', 1, len(xs), valinit=(1, len(xs)), valfmt='%d')
+
+        # Buttons for navigation
+        ax_prev = plt.axes([0.1, 0.1, 0.05, 0.03])
+        ax_next = plt.axes([0.9, 0.1, 0.05, 0.03])
+        btn_prev = Button(ax_prev, "◀")
+        btn_next = Button(ax_next, "▶")
+
+        # --- Update function ---
+        def update(val):
+            """
+            Updates plot when slider range changes.
+
+            Args:        
+                val (float) : value of the slider during the callback 
+                            (Necessary even if not used)
+            """
+            start_frame, end_frame = map(int, slider.val)
+            selected_x = xs[start_frame-1:end_frame]
+            selected_y = ys[start_frame-1:end_frame]
+            trail_scatter.set_offsets(np.c_[selected_x, selected_y])
+            
+            # Keep the red point at the end
+            point.set_data([xs[end_frame-1]], [ys[end_frame-1]])
+
+            # Compute ghost trail points
+            start = max(0, end_frame - 1 - args.trail)
+            trail_x = xs[start:end_frame - 1]
+            trail_y = ys[start:end_frame - 1]
+
+            # Update the dynamic time duration
+
+            current_duration = float_timestamps[end_frame - 1] - float_timestamps[0]
+            cur_str = format_duration(current_duration)
+
+            duration_text.set_text(f"{cur_str} / {total_str}")
+
+            # Fade effect
+            n = len(trail_x)
+            if n > 0:
+                alphas = np.linspace(0.1, 0.8, n)
+                colors = [(0, 0, 1, a) for a in alphas]
+                trail_scatter.set_offsets(np.c_[trail_x, trail_y][::-1])
+                trail_scatter.set_facecolors(colors[::-1])
+            else:
+                trail_scatter.set_offsets(np.empty((0, 2)))
+
+            ax.set_title(f"Carte de trajectoire : Frame {end_frame}/{len(xs)}\n{timestamps[end_frame - 1]}")
+            fig.canvas.draw_idle()
+
+        slider.on_changed(update)
+
+        # --- Initial frame ---
+        update(0)
+
+        def next_frame(event):
+            fig.canvas.release_mouse(slider.ax)
+            start_frame, end_frame = map(int, slider.val)
+            if end_frame < len(xs):
+                slider.set_val([start_frame, end_frame + 1])
+
+        def prev_frame(event):
+            fig.canvas.release_mouse(slider.ax)
+            start_frame, end_frame = map(int, slider.val)
+            if end_frame > start_frame:
+                slider.set_val([start_frame, end_frame - 1])
+            elif end_frame > 1:
+                slider.set_val([start_frame - 1, end_frame - 1])
+
+        btn_next.on_clicked(next_frame)
+        btn_prev.on_clicked(prev_frame)
+
+        plt.show()
+
+    except KeyboardInterrupt:
+        plt.close()
 
 
 def format_duration(seconds_total):
-    """ Format the dynamic timestamp under the slider """
+    """
+    Format the dynamic timestamp under the slider to have it more readable
+
+    Args:
+        seconds_total (float) : seconds from beginning to slider_value
+
+    Returns:
+        time (string) : the time in string of format hh:mm:ss
+    """
     hours = int(seconds_total // 3600)
     minutes = int((seconds_total % 3600) // 60)
     seconds = int(seconds_total % 60)
@@ -385,8 +449,25 @@ def format_duration(seconds_total):
 
 
 def detect_stops(csv_filename, speed_thresh=0.2, min_duration=1.0):
-    """ Detects stops based on movement speed threshold and duration. """
-    xs, ys, timestamps, float_timestamps = get_positions(csv_filename, True)
+    """
+    Detects stops based on movement speed threshold and duration.
+
+    Args:
+        csv_filename (str) : path to the CSV file
+        speed_thresh (float) : speed treshold to consider a target moving
+        min_duration (float) : min pause to count as a stop
+
+    Returns:
+        xs (numpy.ndarray) : every x coordinate of each measured position
+        ys (numpy.ndarray) : every y coordinate of each measured position
+        float_timestamps (numpy.ndarray) : every timestamps in float
+        stops (list) : list of dicts each representing a stop using its
+                        - starting frame
+                        - ending frame
+                        - x position
+                        - y position
+    """
+    xs, ys, timestamps, float_timestamps = get_positions(csv_filename)
 
     logging.debug("Stops calculation")
 
@@ -425,7 +506,12 @@ def detect_stops(csv_filename, speed_thresh=0.2, min_duration=1.0):
 
 
 def show_summary_window(csv_filename):
-    """ Displays a static summary window with mean and stop stats. """
+    """
+    Displays a static summary window with stops stats.
+
+    Args:
+        csv_filename (str) : path to the CSV file
+    """
 
     xs, ys, float_timestamps, stops = detect_stops(csv_filename)
 
@@ -464,7 +550,9 @@ def show_summary_window(csv_filename):
 
 
 def main():
-    """ Main entry point. Parses args and launches visualization or stop detection. """
+    """
+    Main entry point. Parses args and launches visualization or stop detection.
+    """
     parser = build_arg_parser()
     args = parser.parse_args()
 
@@ -476,10 +564,7 @@ def main():
     if (args.stops):
         show_summary_window(args.csv)
 
-    try:
-        update_scatter_from_csv(anchors, args)
-    except KeyboardInterrupt:
-        pass
+    update_scatter_from_csv(anchors, args)
 
 
 if __name__ == '__main__':

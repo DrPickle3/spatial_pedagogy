@@ -13,22 +13,36 @@ import turtle
 
 from zeroconf import ServiceInfo, Zeroconf
 
-TCP_IP = "0.0.0.0"
+TCP_IP = "0.0.0.0" # Accepts everything
 TCP_PORT = 5000
 
 meter2pixel = 200   # Ususally always fit in the window (real-time only)
+                    # Decrease this number if the anchors are at more than 3-4 meters apart
 
-filename = "../logs/positions.csv"
+filename = "../logs/positions.csv" # Will always write in this file
 
+# Put this value to 2 if doing the antennas calibration
 minimum_anchors_for_position = 4    # maximum precision
 
+# Small padding for the calibration in post-process
 img_padding = 25
 
 
 def load_anchors(config_path="../config.json"):
-    """ Load anchors from a JSON configuration file. """
+    """
+    Load anchors from a JSON configuration file.
+
+    Args:
+        config_path (str, optional): The file path to the JSON config file.
+                    Defaults to ../config.json.
+
+    Returns:
+        anchors (dictionary{key: anchor id, value: tuple(x, y, z)}) : 
+                                                    anchors positions with ids
+    """
     if not os.path.exists(config_path):
-        raise FileNotFoundError(f"Config file not found: {config_path}")
+        logging.error(f"Config file not found: {config_path}")
+        return []
     with open(config_path, "r") as f:
         data = json.load(f)
 
@@ -45,14 +59,21 @@ def on_exit():
 
 
 def main_loop(sock, display = False):
-    """ Main loop handling TCP data reception and visualization """
+    """
+    Main loop handling TCP data reception, position computing and CSV writing
+
+    Args:
+        sock (socket.socket instance): Listening socke, accepts connections
+        display (bool) : if True, will display a turtle window with real-time
+                         position and Anchors. Default to False
+    """
     logging.info(f"***Waiting for connection on port {TCP_PORT}***")
     conn, addr = sock.accept()
-    conn.settimeout(5.0)
+    conn.settimeout(5.0)    # Probably lost Tag connection
     logging.info(f"***Connection accepted from {addr}***")
 
     if display:
-        global t_ui, t_anchors, t_tag
+        global t_anchors, t_tag
     buffer = ""  # reset buffer per connection
 
     try:
@@ -66,11 +87,11 @@ def main_loop(sock, display = False):
             for anchor in anchors_list:
                 if anchor["A"] in anchors:
                     anchor_range = float(anchor["R"])
-                    if anchor_range > 0.0 and anchor_range < 10.0:
+                    if anchor_range > 0.0 and anchor_range < 10.0: # Basic validation
                         ranges[anchor["A"]] = anchor_range
                     if display:
                         ax, ay, az = anchors[anchor["A"]]
-                        pos_x = -250 + ax * meter2pixel
+                        pos_x = -250 + ax * meter2pixel # constants to fit in turtle window
                         pos_y = 150 - ay * meter2pixel
                         draw_uwb_anchor(pos_x, pos_y, anchor["A"], t_anchors)
 
@@ -83,26 +104,30 @@ def main_loop(sock, display = False):
                 distances.append(None)
 
             if len(ranges) >= minimum_anchors_for_position:
-                x, y = tag_pos(ranges, anchors)
+                x, y = 0.0 # For 1 anchor calculation
 
-                if x != -1 and y != -1:
+                if len(ranges) > 1: # Cannot find pos with 1 anchor
+                    x, y = tag_pos(ranges, anchors)
 
-                    with open(filename, "a", newline="") as file:
-                        writer = csv.writer(file)
-                        writer.writerow([
-                            len(ranges),
-                            *anchor_ids,
-                            *distances,
-                            x, y, datetime.datetime.now()
-                        ])
-                    if display:
-                        clean(t_tag)
-                        draw_uwb_tag(x, y, "TAG", t_tag)
+                if x == -1 or y == -1:
+                    continue
+
+                with open(filename, "a", newline="") as file:
+                    writer = csv.writer(file)
+                    writer.writerow([
+                        len(ranges),
+                        *anchor_ids,
+                        *distances,
+                        x, y, datetime.datetime.now()
+                    ])
+                if display:
+                    clean(t_tag)
+                    draw_uwb_tag(x, y, "TAG", t_tag)
 
     except (ConnectionResetError, BrokenPipeError):
         logging.warning(f"***Connection lost from {addr}, waiting for new device...***")
         conn.close()
-        raise ConnectionResetError
+        pass # to try again
     except socket.timeout:
         conn.close()
         logging.warning("Lost connection to the Tag")
@@ -114,50 +139,83 @@ def main_loop(sock, display = False):
 
 
 def tag_pos(ranges, anchors):
-    """ Compute tag position based on distances to known anchors """
+    """
+    Compute tag position based on distances to known anchors
+
+    Args:
+        ranges (dictionary{k: anchor id, v: distance float}): Distances with ids
+        anchors (dictionary{key: anchor id, value: tuple(x, y, z)}) : anchors positions with ids
+
+    Returns:
+        floats x and y with 3 decimals
+    """
     keys = [k for k in ranges if k in anchors]
     anchor_coords = np.array([anchors[k] for k in keys])
     dists = np.array([ranges[k] for k in keys])
 
     if len(dists) == 2:
         logging.debug("Position with only 2 anchors")
+
+        # Sorting the pairs by the x coord to differentiate left and right
         sorted_pairs = sorted(zip(anchor_coords, dists), key=lambda p: p[0][0])
         left_anchor, left_dist = sorted_pairs[0]
         right_anchor, right_dist = sorted_pairs[1]
 
+        # Third distance for trilateration
         c = np.linalg.norm(right_anchor - left_anchor)
+
         return tag_pos_2_anchors(right_dist, left_dist, c)
 
     def error(pos):
         est = np.sqrt(((anchor_coords - pos) ** 2).sum(axis=1))
         return np.sum((est - dists) ** 2)
 
+    # Initial guess = centroid of all the anchors 
+    # TODO: For optimization we could keep the last position and use it as the
+    # initial guess because its faster if we start near the solution 
     result = minimize(error, x0=np.mean(anchor_coords, axis=0))
     return round(float(result.x[0]), 3), round(float(result.x[1]),3)
 
 
 def tag_pos_2_anchors(a, b, c):
-    """ Estimate 2D tag position using only 2 anchors """
+    """
+    Estimate 2D tag position using only 2 anchors
+
+    Args:
+        a (float) : represents one side of the triangle
+        b (float) : represents another side of the triangle
+        c (float) : represents the last side of the triangle
+
+    Returns:
+        floats x and y with 3 decimals
+    """
     x=0.0
     y=0.0
 
     if (a != 0 and b != 0 and c != 0) :
         cos_a = (b * b + c * c - a * a) / (2 * b * c)
-        if cos_a * cos_a > 1:
+        if cos_a * cos_a > 1:   #floating point errors check
             return -1, -1
         x = b * cos_a
         sin_a = (1 - cos_a * cos_a) ** 0.5
         y = b * sin_a
 
-    return round(x.real, 3), round(y.real, 3)
+    return round(x, 3), round(y, 3)
 
 
 def connect_wifi():
-    """ Setup a Wi-Fi TCP server using Zeroconf for discovery """
+    """
+    Setup a Wi-Fi TCP server using Zeroconf for discovery
+
+    Returns:
+        sock (socket.socket instance): Listening socke, accepts connections
+    """
 
     hostname = socket.gethostname()
     local_ip = socket.gethostbyname(hostname)
 
+    # Useful to keep that so we don't have to manually push
+    # the new IP address in the Tag.
     info = ServiceInfo(
         "_tcpserver._tcp.local.",             # service type
         "spatialPedagogy._tcpserver._tcp.local.", # service name
@@ -178,7 +236,19 @@ def connect_wifi():
 
 
 def read_data(conn, buffer):
-    """ Read and parse incoming JSON UWB data from the socket """
+    """
+    Read and parse incoming JSON UWB data from the socket
+
+    Args:
+        conn (socket.socket) : connection, we can use it for sending or
+                               receiving data
+        buffer (str) : accumulated received data
+
+    Returns:
+        uwb_list (list of dictionaries) : each dictionary is an anchor with its
+                                          id and its range measured
+        buffer (str) : cleaned version of the accumulated received data
+    """
     try:
         chunk = conn.recv(1024).decode("utf-8")
         buffer += chunk
@@ -196,13 +266,13 @@ def read_data(conn, buffer):
         # Keep only the last complete JSON object
         last_json = matches[-1]
 
-        # Remove everything up to and including last complete JSON
+        # Remove everything up to after the last complete JSON
         last_index = buffer.rfind(last_json) + len(last_json)
         buffer = buffer[last_index:]
 
         # Parse it
         uwb_data = json.loads(last_json)
-        uwb_list = uwb_data.get("links", [])
+        uwb_list = uwb_data.get("links", []) # [] is default return if != links
 
         return uwb_list, buffer
 
@@ -217,7 +287,9 @@ def read_data(conn, buffer):
 
 
 def clear_file():
-    """ Clear and reinitialize the CSV output file """
+    """
+    Clear and reinitialize the CSV output file. Writes the header row.
+    """
     logging.debug("CSV file cleared")
     with open(filename, "w", newline="") as file:
         writer = csv.writer(file)
@@ -227,30 +299,38 @@ def clear_file():
         ])
 
 
+# All the functions under this point are functions to display the turtle window in real-time only
+# They are functions directly taken from the Makerfabs showcase code for the Tag and Anchors
+# https://github.com/Makerfabs/Makerfabs-ESP32-UWB/blob/main/example/IndoorPositioning/uwb_position_display.py
+
 def screen_init():
-    """ Initialize the turtle-based UI """
+    """
+    Initialize the turtle-based UI 
+    """
     screen = turtle.Screen()
     screen.setup(1200, 800)
     screen.tracer(True)
 
-    global t_ui, t_anchors, t_tag
+    global t_anchors, t_tag
 
-    t_ui = turtle.Turtle()
     t_anchors = turtle.Turtle()
     t_tag = turtle.Turtle()
-    # turtle_init(t_ui) #(Wall)
     turtle_init(t_anchors)
     turtle_init(t_tag)
 
 
 def turtle_init(t=turtle):
-    """ Initialize a turtle object """
+    """
+    Initialize a turtle object
+    """
     t.hideturtle()
     t.speed(0)
 
 
 def fill_cycle(x, y, r, color="black", t=turtle):
-    """ Draw a filled circle on the screen """
+    """
+    Draw a filled circle on the screen
+    """
     t.up()
     t.goto(x, y)
     t.down()
@@ -259,7 +339,9 @@ def fill_cycle(x, y, r, color="black", t=turtle):
 
 
 def write_txt(x, y, txt, color="black", t=turtle, f=('Arial', 12, 'normal')):
-    """ Write text at a given position """
+    """
+    Write text at a given position
+    """
 
     t.pencolor(color)
     t.up()
@@ -269,42 +351,17 @@ def write_txt(x, y, txt, color="black", t=turtle, f=('Arial', 12, 'normal')):
     t.up()
 
 
-def draw_rect(x, y, w, h, color="black", t=turtle):
-    """ Draw a rectangle """
-    t.pencolor(color)
-
-    t.up()
-    t.goto(x, y)
-    t.down()
-    t.goto(x + w, y)
-    t.goto(x + w, y + h)
-    t.goto(x, y + h)
-    t.goto(x, y)
-    t.up()
-
-
-def fill_rect(x, y, w, h, color=("black", "black"), t=turtle):
-    """ Fill a rectangle with color """
-    t.begin_fill()
-    draw_rect(x, y, w, h, color, t)
-    t.end_fill()
-    pass
-
-
 def clean(t=turtle):
-    """ Clear a turtle layer """
+    """
+    Clear a turtle layer
+    """
     t.clear()
 
 
-def draw_ui(t):
-    """ Draw main UI elements """
-    write_txt(-300, 250, "UWB Positon", "black",  t, f=('Arial', 32, 'normal'))
-    fill_rect(-400, 200, 800, 40, "black", t)
-    write_txt(-50, 205, "WALL", "yellow",  t, f=('Arial', 24, 'normal'))
-
-
 def draw_uwb_anchor(x, y, txt, t):
-    """ Draw a UWB anchor point """
+    """
+    Draw a UWB anchor point
+    """
     r = 20
     fill_cycle(x, y, r, "green", t)
     write_txt(x + r, y, txt,
@@ -312,7 +369,9 @@ def draw_uwb_anchor(x, y, txt, t):
 
 
 def draw_uwb_tag(x, y, txt, t):
-    """ Draw the tag position """
+    """
+    Draw the tag position
+    """
     pos_x = -250 + int(x * meter2pixel)
     pos_y = 150 - int(y * meter2pixel)
     r = 20
