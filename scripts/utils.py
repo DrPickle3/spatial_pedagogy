@@ -27,6 +27,7 @@ minimum_anchors_for_position = 1    # maximum precision
 
 # Small padding for the calibration in post-process
 img_padding = 25
+no_image_padding = 1
 
 # Global logger for this script
 logger = logging.getLogger(__name__)

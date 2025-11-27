@@ -10,7 +10,7 @@ import matplotlib.image as mpimg
 import matplotlib.cm as cm
 import matplotlib.pyplot as plt
 from matplotlib.patches import Ellipse
-from matplotlib.widgets import RangeSlider, Button                  
+from matplotlib.widgets import Slider, Button                  
 
 import numpy as np
 from scipy.ndimage import uniform_filter1d
@@ -26,6 +26,7 @@ major_cells = 10
 minor_div = 5
 
 real_range_1d = 3.37
+real_pos_precision = [2.3622, 1.905]
 chip_incertitude = 0.1 # 10 cm
 
 
@@ -244,7 +245,7 @@ def update_scatter_from_csv(anchors, args):
             ax.add_patch(gaussian_circle)
 
             # Real point + Mean Comparison
-            ax.plot([2.3622], [1.905], 'go', markersize=6, label="Real position")
+            ax.plot([real_pos_precision[0]], [real_pos_precision[1]], 'go', markersize=6, label="Real position")
             ax.plot([mean_x], [mean_y], 'yo', markersize=6, label="Mean position")
         
         anchor_xs = [coord[0] for coord in anchors.values()]
@@ -253,7 +254,11 @@ def update_scatter_from_csv(anchors, args):
         # --- Determine plot limits ---
         all_x = np.concatenate([xs, anchor_xs])
         all_y = np.concatenate([ys, anchor_ys])
-        padding = utils.img_padding
+
+        padding = utils.no_image_padding
+        if args.calibration:
+            padding = utils.img_padding
+
         x_min, x_max = all_x.min() - padding, all_x.max() + padding
         y_min, y_max = all_y.min() - padding, all_y.max() + padding
 
@@ -354,7 +359,8 @@ def update_scatter_from_csv(anchors, args):
 
         # --- Slider setup ---
         ax_slider = plt.axes([0.25, 0.1, 0.5, 0.03])
-        slider = RangeSlider(ax_slider, 'Frame', 1, len(xs), valinit=(1, len(xs)), valfmt='%d')
+        slider = Slider(ax_slider, 'Frame', 1, len(xs), valinit=1, valfmt='%d')
+
 
         # Buttons for navigation
         ax_prev = plt.axes([0.1, 0.1, 0.05, 0.03])
@@ -371,7 +377,9 @@ def update_scatter_from_csv(anchors, args):
                 val (float) : value of the slider during the callback 
                             (Necessary even if not used)
             """
-            start_frame, end_frame = map(int, slider.val)
+            end_frame = int(slider.val)
+            start_frame = max(1, end_frame - args.trail)
+
             selected_x = xs[start_frame-1:end_frame]
             selected_y = ys[start_frame-1:end_frame]
             trail_scatter.set_offsets(np.c_[selected_x, selected_y])
@@ -411,17 +419,15 @@ def update_scatter_from_csv(anchors, args):
 
         def next_frame(event):
             fig.canvas.release_mouse(slider.ax)
-            start_frame, end_frame = map(int, slider.val)
+            end_frame = int(slider.val)
             if end_frame < len(xs):
-                slider.set_val([start_frame, end_frame + 1])
+                slider.set_val(end_frame + 1)
 
         def prev_frame(event):
             fig.canvas.release_mouse(slider.ax)
-            start_frame, end_frame = map(int, slider.val)
-            if end_frame > start_frame:
-                slider.set_val([start_frame, end_frame - 1])
-            elif end_frame > 1:
-                slider.set_val([start_frame - 1, end_frame - 1])
+            end_frame = int(slider.val)
+            if end_frame > 1:
+                slider.set_val(end_frame - 1)
 
         btn_next.on_clicked(next_frame)
         btn_prev.on_clicked(prev_frame)
