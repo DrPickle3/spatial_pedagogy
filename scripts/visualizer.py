@@ -188,7 +188,6 @@ def update_scatter_from_csv(anchors, args):
         args (argparse.Namespace) : All command line args are accessible from it
     """
     try :
-        # --- Create figure and initial plot ---
         fig, ax = plt.subplots()
         plt.subplots_adjust(bottom=0.25)
         ax.set_aspect("equal") # Avoids stretching
@@ -222,7 +221,6 @@ def update_scatter_from_csv(anchors, args):
             if os.path.exists(new_anchors):
                 anchors = smart_anchors(utils.load_anchors(new_anchors), args.csv)
 
-        # --- Load CSV data ---
         xs, ys, timestamps, float_timestamps = get_positions(args.csv)
 
         # This is better for non moving Tag
@@ -251,7 +249,6 @@ def update_scatter_from_csv(anchors, args):
         anchor_xs = [coord[0] for coord in anchors.values()]
         anchor_ys = [coord[1] for coord in anchors.values()]
 
-        # --- Determine plot limits ---
         all_x = np.concatenate([xs, anchor_xs])
         all_y = np.concatenate([ys, anchor_ys])
 
@@ -357,7 +354,6 @@ def update_scatter_from_csv(anchors, args):
             fontsize=10
         )
 
-        # --- Slider setup ---
         ax_slider = plt.axes([0.25, 0.1, 0.5, 0.03])
         slider = Slider(ax_slider, 'Frame', 1, len(xs), valinit=1, valfmt='%d')
 
@@ -368,7 +364,6 @@ def update_scatter_from_csv(anchors, args):
         btn_prev = Button(ax_prev, "◀")
         btn_next = Button(ax_next, "▶")
 
-        # --- Update function ---
         def update(val):
             """
             Updates plot when slider range changes.
@@ -414,7 +409,7 @@ def update_scatter_from_csv(anchors, args):
 
         slider.on_changed(update)
 
-        # --- Initial frame ---
+        # Initial frame
         update(0)
 
         def next_frame(event):
