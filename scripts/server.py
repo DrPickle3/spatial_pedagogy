@@ -21,6 +21,7 @@ def main():
     args.display and utils.screen_init()
     utils.clear_file()
     utils.load_anchors()
+    utils.setup_logging()
 
     try:
         while True:

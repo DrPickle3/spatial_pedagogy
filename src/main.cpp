@@ -11,7 +11,7 @@
 #include <vector>
 #include "secrets.h"
 
-char ANCHOR_ADD[] = "A7:AA:5B:D5:A9:9A:E2:9C";
+char ANCHOR_ADD[] = "A3:AA:5B:D5:A9:9A:E2:9C";
 char TAG_ADDR[] = "7D:00:22:EA:82:60:3B:9B";
 
 // SAVED ANCHOR CALIBRATIONS (Not good anymore)
@@ -61,13 +61,13 @@ char TAG_ADDR[] = "7D:00:22:EA:82:60:3B:9B";
  */
 
 #define TAG_ANT_DELAY 81
-#define A1_ANT_DELAY 22
-#define A2_ANT_DELAY 41
+#define A1_ANT_DELAY 125
+#define A2_ANT_DELAY 82
 #define A3_ANT_DELAY 21
-#define A4_ANT_DELAY 4
-#define A5_ANT_DELAY 28
-#define A6_ANT_DELAY 0
-#define A7_ANT_DELAY 0
+#define A4_ANT_DELAY 27
+#define A5_ANT_DELAY 74
+#define A6_ANT_DELAY 43
+#define A7_ANT_DELAY 71
 
 #define SPI_SCK 18
 #define SPI_MISO 19
@@ -83,7 +83,7 @@ char TAG_ADDR[] = "7D:00:22:EA:82:60:3B:9B";
 #define RANGE_HISTORY 5
 
 // Comment to push tag code
-// #define PUSHING_ANCHOR_CODE
+#define PUSHING_ANCHOR_CODE
 
 Adafruit_SSD1306 display(128, 64, &Wire, -1);
 
@@ -97,26 +97,6 @@ TaskHandle_t networkTask;
 
 const char *serverIP = "spatialPedagogy.local";
 const uint16_t serverPort = 5000;
-
-uint16_t getAntennaDelay(const char *addr)
-{
-  if (strcmp(addr, "A1:AA:5B:D5:A9:9A:E2:9C") == 0)
-    return A1_ANT_DELAY;
-  if (strcmp(addr, "A2:AA:5B:D5:A9:9A:E2:9C") == 0)
-    return A2_ANT_DELAY;
-  if (strcmp(addr, "A3:AA:5B:D5:A9:9A:E2:9C") == 0)
-    return A3_ANT_DELAY;
-  if (strcmp(addr, "A4:AA:5B:D5:A9:9A:E2:9C") == 0)
-    return A4_ANT_DELAY;
-  if (strcmp(addr, "A5:AA:5B:D5:A9:9A:E2:9C") == 0)
-    return A5_ANT_DELAY;
-  if (strcmp(addr, "A6:AA:5B:D5:A9:9A:E2:9C") == 0)
-    return A6_ANT_DELAY;
-  if (strcmp(addr, "A7:AA:5B:D5:A9:9A:E2:9C") == 0)
-    return A7_ANT_DELAY;
-
-  return TAG_ANT_DELAY; // fallback
-}
 
 float median_filter(float *arr, int size)
 {
@@ -336,6 +316,26 @@ void inactiveDevice(DW1000Device *device)
 #ifndef PUSHING_ANCHOR_CODE
   delete_link(uwb_data, device->getShortAddress());
 #endif
+}
+
+uint16_t getAntennaDelay(const char *addr)
+{
+  if (strcmp(addr, "A1:AA:5B:D5:A9:9A:E2:9C") == 0)
+    return A1_ANT_DELAY;
+  if (strcmp(addr, "A2:AA:5B:D5:A9:9A:E2:9C") == 0)
+    return A2_ANT_DELAY;
+  if (strcmp(addr, "A3:AA:5B:D5:A9:9A:E2:9C") == 0)
+    return A3_ANT_DELAY;
+  if (strcmp(addr, "A4:AA:5B:D5:A9:9A:E2:9C") == 0)
+    return A4_ANT_DELAY;
+  if (strcmp(addr, "A5:AA:5B:D5:A9:9A:E2:9C") == 0)
+    return A5_ANT_DELAY;
+  if (strcmp(addr, "A6:AA:5B:D5:A9:9A:E2:9C") == 0)
+    return A6_ANT_DELAY;
+  if (strcmp(addr, "A7:AA:5B:D5:A9:9A:E2:9C") == 0)
+    return A7_ANT_DELAY;
+
+  return TAG_ANT_DELAY; // fallback
 }
 
 // SSD1306

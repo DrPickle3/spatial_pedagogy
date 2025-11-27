@@ -11,8 +11,8 @@ def main():
     meters_per_tick = c * tick_duration
 
     # Distances
-    true_distance = 2.4892    # real distance between tag and anchor
-    measured_distance = 2.46  # measured distance using the tag
+    true_distance = 3.37    # real distance between tag and anchor
+    measured_distance = 3.181  # measured distance using the tag
 
     # Tag delay is already calibrated, so assume tau_tag = 0
     tau_tag = 0

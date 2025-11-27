@@ -14,6 +14,7 @@ from matplotlib.widgets import RangeSlider, Button
 
 import numpy as np
 from scipy.ndimage import uniform_filter1d
+from scipy.stats import norm
 
 import utils
 
@@ -23,6 +24,9 @@ num_bins = 20
 # Cells sizes for the grid
 major_cells = 10
 minor_div = 5
+
+real_range_1d = 3.37
+chip_incertitude = 0.1 # 10 cm
 
 
 def build_arg_parser():
@@ -240,8 +244,8 @@ def update_scatter_from_csv(anchors, args):
             ax.add_patch(gaussian_circle)
 
             # Real point + Mean Comparison
-            ax.plot([2.3622], [1.905], 'go', markersize=6, label="Position réelle")
-            ax.plot([mean_x], [mean_y], 'yo', markersize=6, label="Position moyenne")
+            ax.plot([2.3622], [1.905], 'go', markersize=6, label="Real position")
+            ax.plot([mean_x], [mean_y], 'yo', markersize=6, label="Mean position")
         
         anchor_xs = [coord[0] for coord in anchors.values()]
         anchor_ys = [coord[1] for coord in anchors.values()]
@@ -269,8 +273,8 @@ def update_scatter_from_csv(anchors, args):
             ax.scatter(stop_xs, stop_ys, c="red", s=60, marker="^", label="Stops")
 
         # Dynamic point (moving tag)
-        point, = ax.plot([], [], 'go', markersize=6, label="Position mesurée")
-        trail_scatter = ax.scatter([], [], c='blue', s=30, label="Positions antérieures")
+        point, = ax.plot([], [], 'go', markersize=6, label="Current position")
+        trail_scatter = ax.scatter([], [], c='blue', s=30, label="Past positions")
 
         # Labels, legend, etc.
         ax.set_xlabel("X")
@@ -334,7 +338,7 @@ def update_scatter_from_csv(anchors, args):
         ax.grid(which='minor', linestyle=':', color='gray', linewidth=1, alpha=0.3)
 
         # Title
-        ax.set_title(f"Carte de trajectoire : Frame 1/{len(xs)}\n{timestamps[0]}")
+        ax.set_title(f"Trajectory map : Frame 1/{len(xs)}\n{timestamps[0]}")
 
         ax_duration = plt.axes([0.25, 0.06, 0.5, 0.03])
         ax_duration.axis("off")
@@ -397,7 +401,7 @@ def update_scatter_from_csv(anchors, args):
             else:
                 trail_scatter.set_offsets(np.empty((0, 2)))
 
-            ax.set_title(f"Carte de trajectoire : Frame {end_frame}/{len(xs)}\n{timestamps[end_frame - 1]}")
+            ax.set_title(f"Trajectory map : Frame {end_frame}/{len(xs)}\n{timestamps[end_frame - 1]}")
             fig.canvas.draw_idle()
 
         slider.on_changed(update)
@@ -426,6 +430,70 @@ def update_scatter_from_csv(anchors, args):
 
     except KeyboardInterrupt:
         plt.close()
+
+
+def plot_precision_1d(csv_filename):
+    """
+    Reads the single range from CSV and display 1d precision
+
+    Args:
+        csv_filename (str) : path to the CSV file
+    """
+    xs = []
+    with open(csv_filename, newline='') as file:
+        reader = csv.DictReader(file)
+        for row in reader:
+            try:
+                x = float(row.get("d1"))
+                xs.append(x)
+            except ValueError:
+                continue  # skip invalid rows
+
+    xs = np.array(xs)
+
+    mean_x = np.mean(xs)
+    std_x = np.std(xs)
+    var_x = np.var(xs)
+
+    fig, ax = plt.subplots(figsize=(10, 4))
+    ax.set_title("1D Precision Analysis")
+
+    # Jitter to see the differences
+    jitter = (np.random.rand(len(xs)) - 0.5) * 0.1
+    ax.scatter(xs, jitter, color="blue", alpha=0.6, s=25, label="Measures")
+
+    # Gaussian curve
+    x_plot = np.linspace(mean_x - 4*std_x, mean_x + 4*std_x, 500)
+    pdf = norm.pdf(x_plot, mean_x, std_x)
+
+    # Normalize for better visualization
+    pdf = pdf / pdf.max() / 5
+
+    ax.plot(x_plot, pdf, color="red", linewidth=2, label="Gaussian")
+
+    # Real measure
+    ax.axvline(real_range_1d, color="green", linestyle=":", linewidth=2, label="Real position")
+
+    # Mean and Variances
+    ax.axvline(mean_x, color="gray", linestyle="-", linewidth=2, label=f"Mean = {mean_x:.3f}")
+
+    # Incertitude
+    ax.axvline(mean_x - chip_incertitude, color="purple", linestyle="--", linewidth=2)
+    ax.axvline(mean_x + chip_incertitude, color="purple", linestyle="--", linewidth=2, label=f"Incertitude")
+
+    ax.axvspan(mean_x - std_x, mean_x + std_x,
+               color="yellow", alpha=0.15, label="±1σ")
+
+    ax.axvspan(mean_x - 2*std_x, mean_x + 2*std_x,
+               color="orange", alpha=0.10, label="±2σ")
+
+    #Invisible line for total measures at the end of legend
+    ax.plot(x_plot, pdf, color="none", linewidth=2, label=f"Total measures: {len(xs)}")
+    ax.set_yticks([])
+    ax.set_xlabel("Measured range")
+    ax.legend()
+    ax.grid(True, linestyle=":", alpha=0.5)
+    plt.show()
 
 
 def format_duration(seconds_total):
@@ -564,7 +632,10 @@ def main():
     if (args.stops):
         show_summary_window(args.csv)
 
-    update_scatter_from_csv(anchors, args)
+    if len(anchors) > 1:
+        update_scatter_from_csv(anchors, args)
+    else :
+        plot_precision_1d(args.csv)
 
 
 if __name__ == '__main__':

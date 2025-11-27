@@ -5,6 +5,7 @@ import logging
 import os
 import re
 import socket
+import sys
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -22,10 +23,13 @@ meter2pixel = 200   # Ususally always fit in the window (real-time only)
 filename = "../logs/positions.csv" # Will always write in this file
 
 # Put this value to 2 if doing the antennas calibration
-minimum_anchors_for_position = 4    # maximum precision
+minimum_anchors_for_position = 1    # maximum precision
 
 # Small padding for the calibration in post-process
 img_padding = 25
+
+# Global logger for this script
+logger = logging.getLogger(__name__)
 
 
 def load_anchors(config_path="../config.json"):
@@ -41,7 +45,7 @@ def load_anchors(config_path="../config.json"):
                                                     anchors positions with ids
     """
     if not os.path.exists(config_path):
-        logging.error(f"Config file not found: {config_path}")
+        logger.error(f"Config file not found: {config_path}")
         return []
     with open(config_path, "r") as f:
         data = json.load(f)
@@ -49,7 +53,7 @@ def load_anchors(config_path="../config.json"):
     global anchors
     anchors = {k: tuple(v) for k, v in data["anchors"].items()}
 
-    logging.debug("Anchors loaded")
+    logger.debug("Anchors loaded")
     return anchors
 
 
@@ -67,10 +71,10 @@ def main_loop(sock, display = False):
         display (bool) : if True, will display a turtle window with real-time
                          position and Anchors. Default to False
     """
-    logging.info(f"***Waiting for connection on port {TCP_PORT}***")
+    logger.info(f"Waiting for connection on port {TCP_PORT}")
     conn, addr = sock.accept()
-    conn.settimeout(5.0)    # Probably lost Tag connection
-    logging.info(f"***Connection accepted from {addr}***")
+    conn.settimeout(8.0)    # Probably lost Tag connection
+    logger.info(f"Connection accepted from {addr}")
 
     if display:
         global t_anchors, t_tag
@@ -104,7 +108,8 @@ def main_loop(sock, display = False):
                 distances.append(None)
 
             if len(ranges) >= minimum_anchors_for_position:
-                x, y = 0.0 # For 1 anchor calculation
+                x = 0.0 # For 1 anchor calculation
+                y = 0.0
 
                 if len(ranges) > 1: # Cannot find pos with 1 anchor
                     x, y = tag_pos(ranges, anchors)
@@ -125,17 +130,30 @@ def main_loop(sock, display = False):
                     draw_uwb_tag(x, y, "TAG", t_tag)
 
     except (ConnectionResetError, BrokenPipeError):
-        logging.warning(f"***Connection lost from {addr}, waiting for new device...***")
+        logger.warning(f"Connection lost from {addr}, waiting for new device...")
         conn.close()
         pass # to try again
     except socket.timeout:
         conn.close()
-        logging.warning("Lost connection to the Tag")
+        logger.warning("Lost connection to the Tag")
         pass # to try again
     except KeyboardInterrupt:
         on_exit()
         conn.close()
         raise KeyboardInterrupt
+    
+
+def setup_logging():
+    """
+    Make the logger prints in the console during runtime
+    """
+    logger.setLevel(logging.DEBUG)
+
+    console_handler = logging.StreamHandler(sys.stdout)
+    formatter = logging.Formatter('[%(levelname)s] : %(message)s')
+
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
 
 
 def tag_pos(ranges, anchors):
@@ -154,7 +172,7 @@ def tag_pos(ranges, anchors):
     dists = np.array([ranges[k] for k in keys])
 
     if len(dists) == 2:
-        logging.debug("Position with only 2 anchors")
+        logger.debug("Position with only 2 anchors")
 
         # Sorting the pairs by the x coord to differentiate left and right
         sorted_pairs = sorted(zip(anchor_coords, dists), key=lambda p: p[0][0])
@@ -277,12 +295,12 @@ def read_data(conn, buffer):
         return uwb_list, buffer
 
     except json.JSONDecodeError as e:
-        logging.error("EXCEPTION!", e, last_json if 'last_json' in locals() else buffer)
+        logger.error("EXCEPTION!", e, last_json if 'last_json' in locals() else buffer)
         return [], buffer
     except socket.timeout:
         raise socket.timeout
     except Exception as e:
-        logging.error("EXCEPTION!", e)
+        logger.error("EXCEPTION!", e)
         return [], buffer
 
 
@@ -290,7 +308,7 @@ def clear_file():
     """
     Clear and reinitialize the CSV output file. Writes the header row.
     """
-    logging.debug("CSV file cleared")
+    logger.debug("CSV file cleared")
     with open(filename, "w", newline="") as file:
         writer = csv.writer(file)
         writer.writerow([

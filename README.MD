@@ -52,5 +52,8 @@ Add a check if we can add the new device in the array before doing it. (line 243
 
 ## TODO
 
-### Image
-The image is not perfectly alligned with the points... Which could be more accurate with stops before the experiment.
+### Antenna delays
+
+When I did my precision 1d, the server goes timeout becuase it doesnt receive anything from the Tag but
+its because there are no anchors not because we lost connection to the Tag.... we probably want to fix it
+
