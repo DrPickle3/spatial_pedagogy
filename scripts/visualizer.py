@@ -147,7 +147,7 @@ def densify_positions(xs, ys, timestamps, float_timestamps, max_dt=0.2):
         new_ts.append(t1)
         padded_ts.append(ts1)
 
-    logging.info("Positions densified")
+    utils.logger.info("Positions densified")
 
     return np.array(new_xs), np.array(new_ys), padded_ts, new_ts
 
@@ -194,7 +194,7 @@ def update_scatter_from_csv(anchors, args):
 
         # Image
         if args.calibration:
-            logging.debug("Calibration process")
+            utils.logger.debug("Calibration process")
             result = subprocess.run(
                 ["python", "../calibration/main.py", "--csv", args.csv],
                 capture_output=True, text=True
@@ -225,7 +225,7 @@ def update_scatter_from_csv(anchors, args):
 
         # This is better for non moving Tag
         if args.precision:
-            logging.debug("Precision calculations")
+            utils.logger.debug("Precision calculations")
             mean_x, mean_y = np.mean(xs), np.mean(ys)
             std_x, std_y = np.std(xs), np.std(ys)
             var_x, var_y = np.var(xs), np.var(ys)
@@ -243,7 +243,15 @@ def update_scatter_from_csv(anchors, args):
             ax.add_patch(gaussian_circle)
 
             # Real point + Mean Comparison
-            ax.plot([real_pos_precision[0]], [real_pos_precision[1]], 'go', markersize=6, label="Real position")
+            ax.plot(
+                [real_pos_precision[0]],
+                [real_pos_precision[1]],
+                marker='*',
+                color="#30EA30",
+                markersize=10,
+                linestyle='',
+                label="Real position"
+            )
             ax.plot([mean_x], [mean_y], 'yo', markersize=6, label="Mean position")
         
         anchor_xs = [coord[0] for coord in anchors.values()]
@@ -288,7 +296,7 @@ def update_scatter_from_csv(anchors, args):
 
         # Heatmap
         if args.heatmap:
-            logging.debug("Heatmap generation")
+            utils.logger.debug("Heatmap generation")
             # Heatmap
             bin_size_x = (x_max - x_min) / num_bins
             bin_size_y = (y_max - y_min) / num_bins
@@ -538,7 +546,7 @@ def detect_stops(csv_filename, speed_thresh=0.2, min_duration=1.0):
     """
     xs, ys, timestamps, float_timestamps = get_positions(csv_filename)
 
-    logging.debug("Stops calculation")
+    utils.logger.debug("Stops calculation")
 
     dt = np.diff(float_timestamps)
     dt[dt == 0] = 1e-6
@@ -625,7 +633,7 @@ def main():
     parser = build_arg_parser()
     args = parser.parse_args()
 
-    logging.getLogger().setLevel(logging.WARNING)
+    utils.setup_logging(logging.DEBUG)
 
     anchors = utils.load_anchors()
     anchors = smart_anchors(anchors, args.csv)

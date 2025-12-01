@@ -23,7 +23,7 @@ meter2pixel = 200   # Ususally always fit in the window (real-time only)
 filename = "../logs/positions.csv" # Will always write in this file
 
 # Put this value to 2 if doing the antennas calibration
-minimum_anchors_for_position = 1    # maximum precision
+minimum_anchors_for_position = 3    # maximum precision
 
 # Small padding for the calibration in post-process
 img_padding = 25
@@ -55,6 +55,8 @@ def load_anchors(config_path="../config.json"):
     anchors = {k: tuple(v) for k, v in data["anchors"].items()}
 
     logger.debug("Anchors loaded")
+    logger.debug(anchors)
+
     return anchors
 
 
@@ -144,11 +146,14 @@ def main_loop(sock, display = False):
         raise KeyboardInterrupt
     
 
-def setup_logging():
+def setup_logging(level = logging.WARNING):
     """
     Make the logger prints in the console during runtime
+
+    Args:
+        level (Literal[]) : logging level we want to setup. Defaut to warning
     """
-    logger.setLevel(logging.DEBUG)
+    logger.setLevel(level)
 
     console_handler = logging.StreamHandler(sys.stdout)
     formatter = logging.Formatter('[%(levelname)s] : %(message)s')
@@ -197,7 +202,7 @@ def tag_pos(ranges, anchors):
 
 
 def tag_pos_2_anchors(a, b, c):
-    """
+    r"""
     Estimate 2D tag position using only 2 anchors. It assumes
     c is along the x axis starting at (0, 0). x, y is the Tag's
     coordinates. Using the Law of Cosines
