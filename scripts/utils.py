@@ -198,13 +198,32 @@ def tag_pos(ranges, anchors):
 
 def tag_pos_2_anchors(a, b, c):
     """
-    Estimate 2D tag position using only 2 anchors
+    Estimate 2D tag position using only 2 anchors. It assumes
+    c is along the x axis starting at (0, 0). x, y is the Tag's
+    coordinates. Using the Law of Cosines
 
     Args:
-        a (float) : represents one side of the triangle
-        b (float) : represents another side of the triangle
-        c (float) : represents the last side of the triangle
+        a (float) : represents right side of the triangle
+        b (float) : represents left side of the triangle
+        c (float) : represents the top side of the triangle (between both anchors)
 
+                    c                   
+        AAA1 ------------------ AAA2
+         \ cos_a     :           /
+          \          :          /
+           \         :         /
+            \        :        /
+             \       :       /
+           b  \      :      /  a
+               \     :     /
+                \    :    /
+                 \   :   /
+                  \  :  /
+                   \ : /
+                    \:/
+                     V
+                    Tag
+                    
     Returns:
         floats x and y with 3 decimals
     """
@@ -212,6 +231,7 @@ def tag_pos_2_anchors(a, b, c):
     y=0.0
 
     if (a != 0 and b != 0 and c != 0) :
+        # Law of cosines
         cos_a = (b * b + c * c - a * a) / (2 * b * c)
         if cos_a * cos_a > 1:   #floating point errors check
             return -1, -1
