@@ -43,6 +43,8 @@ def build_arg_parser():
                    help='Displays the precision of the entire log')
     p.add_argument('--trail', type=int, default=10,
                     help='Number of previous points to show (e.g. --trail 25)')
+    p.add_argument('--max_time_diff', type=float, default=0.2,
+                    help='Maximum amount of time in seconds between 2 positions')
     p.add_argument('--csv', type=str, default="../logs/positions.csv",
                     help='CSV file we want to read from')
     p.add_argument('--calibration', action='store_true',
@@ -50,6 +52,8 @@ def build_arg_parser():
                         'You need to save the results to visualize it !!!' \
                         'You also need to match the anchors with the correct' \
                         'image so the the coordinates fit')
+    p.add_argument('--experiment', type=str,
+                    help='Experiment folder we already have to not do the calibration')
     return p
 
 
@@ -194,20 +198,25 @@ def update_scatter_from_csv(anchors, args):
 
         # Image
         if args.calibration:
-            utils.logger.debug("Calibration process")
-            result = subprocess.run(
-                ["python", "../calibration/main.py", "--csv", args.csv],
-                capture_output=True, text=True
-            )
 
-            full_json = {}
-            for line in result.stdout.splitlines():
-                if not line.strip():
-                    continue
-                obj = json.loads(line)
-                full_json.update(obj)
+            if not args.experiment:
+                utils.logger.debug("Calibration process")
+                result = subprocess.run(
+                    ["python", "../calibration/main.py", "--csv", args.csv],
+                    capture_output=True, text=True
+                )
 
-            experiment_path = full_json["experiment_path"]
+                full_json = {}
+                for line in result.stdout.splitlines():
+                    if not line.strip():
+                        continue
+                    obj = json.loads(line)
+                    full_json.update(obj)
+
+                experiment_path = full_json["experiment_path"]
+            
+            else:
+                experiment_path = args.experiment
 
             img_path = os.path.join(experiment_path, "processed_image.png")
 
@@ -307,15 +316,14 @@ def update_scatter_from_csv(anchors, args):
             # Compute 2D histogram
             heatmap, xedges, yedges = np.histogram2d(xs, ys, bins=[x_bins, y_bins])
 
-            # Put white color to 0s
-            masked_heatmap = np.ma.masked_where(heatmap == 0, heatmap)
+            heatmap_seconds = heatmap * args.max_time_diff
 
             cmap = plt.colormaps["Reds"].copy()
             cmap.set_bad(color="white")   # In case there are invalid values
 
             # Plot the heatmap UNDER the trail/points
             im = ax.imshow(
-                masked_heatmap.T,
+                heatmap_seconds.T,
                 extent=[xedges[0], xedges[-1], yedges[0], yedges[-1]],
                 origin='lower',
                 cmap=cmap,
@@ -324,7 +332,7 @@ def update_scatter_from_csv(anchors, args):
             )
 
             cbar = plt.colorbar(im, ax=ax)
-            cbar.set_label("Heatmap Value", rotation=270, labelpad=15)
+            cbar.set_label("Seconds", rotation=270, labelpad=15)
 
         # Grid lines
         # Major grid spacing
@@ -349,6 +357,8 @@ def update_scatter_from_csv(anchors, args):
 
         # Title
         ax.set_title(f"Trajectory map : Frame 1/{len(xs)}\n{timestamps[0]}")
+
+        ax.set_aspect("equal") # Avoids stretching
 
         ax_duration = plt.axes([0.25, 0.06, 0.5, 0.03])
         ax_duration.axis("off")
@@ -525,7 +535,7 @@ def format_duration(seconds_total):
         return f"{minutes:02d}:{seconds:02d}"
 
 
-def detect_stops(csv_filename, speed_thresh=0.2, min_duration=1.0):
+def detect_stops(csv_filename, speed_thresh=0.2, min_duration=30.0):
     """
     Detects stops based on movement speed threshold and duration.
 
@@ -633,7 +643,7 @@ def main():
     parser = build_arg_parser()
     args = parser.parse_args()
 
-    utils.setup_logging(logging.DEBUG)
+    utils.setup_logging(logging.WARNING)
 
     anchors = utils.load_anchors()
     anchors = smart_anchors(anchors, args.csv)

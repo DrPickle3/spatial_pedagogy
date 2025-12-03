@@ -17,7 +17,7 @@ from zeroconf import ServiceInfo, Zeroconf
 TCP_IP = "0.0.0.0" # Accepts everything
 TCP_PORT = 5000
 
-meter2pixel = 200   # Ususally always fit in the window (real-time only)
+meter2pixel = 50   # Ususally always fit in the window (real-time only)
                     # Decrease this number if the anchors are at more than 3-4 meters apart
 
 filename = "../logs/positions.csv" # Will always write in this file
@@ -76,7 +76,7 @@ def main_loop(sock, display = False):
     """
     logger.info(f"Waiting for connection on port {TCP_PORT}")
     conn, addr = sock.accept()
-    conn.settimeout(8.0)    # Probably lost Tag connection
+    conn.settimeout(800.0)    # Probably lost Tag connection
     logger.info(f"Connection accepted from {addr}")
 
     if display:
@@ -94,7 +94,7 @@ def main_loop(sock, display = False):
             for anchor in anchors_list:
                 if anchor["A"] in anchors:
                     anchor_range = float(anchor["R"])
-                    if anchor_range > 0.0 and anchor_range < 10.0: # Basic validation
+                    if anchor_range > 0.0 and anchor_range < 15.0: # Basic validation
                         ranges[anchor["A"]] = anchor_range
                     if display:
                         ax, ay, az = anchors[anchor["A"]]

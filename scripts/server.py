@@ -19,7 +19,7 @@ def main():
 
     sock = utils.connect_wifi()
     args.display and utils.screen_init()
-    utils.clear_file()
+    # utils.clear_file()
     utils.load_anchors()
     utils.setup_logging()
 
